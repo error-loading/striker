@@ -14,10 +14,23 @@ export default {
         cyan: { DEFAULT: '#00D9FF', glow: '#66E9FF' },
         gold: { DEFAULT: '#FFD700', deep: '#E0B400' },
         danger: '#FF4444',
+        pitch: {
+          950: '#0B1810',
+          900: '#0F2015',
+          800: '#16281C',
+          700: '#1D3625',
+          500: '#2E6B40',
+          300: '#6BB177',
+        },
+        chalk: { DEFAULT: '#F2EFE4', dim: '#C7C1A8' },
+        corner: '#E5484D',
       },
       fontFamily: {
         display: ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
         body: ['Inter', 'Open Sans', 'system-ui', 'sans-serif'],
+        stencil: ['"Big Shoulders Display"', 'Impact', 'sans-serif'],
+        editorial: ['"Inter Tight"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: {
         glow: '0 0 24px rgba(0,217,255,0.35)',
