@@ -125,6 +125,10 @@ export default function SquadBuilder() {
         s.started = true;
         document.body.style.userSelect = 'none';
         document.body.style.cursor = 'grabbing';
+        // A real drag has begun — hide the inspector so the ghost isn't
+        // competing with a stat card for the user's attention.
+        setInspect(null);
+        setSelectedSlot(null);
       }
       const overSlot = hitTestSlot(e.clientX, e.clientY);
       setDrag({ source: s.source, x: e.clientX, y: e.clientY, overSlot });
@@ -350,6 +354,7 @@ export default function SquadBuilder() {
               onSlotClick={handleSlotClick}
               onSlotPointerDown={(index, e) => beginDrag({ kind: 'slot', index })(e)}
               onSlotClear={(index) => { audio.click(); setStarter(index, null); }}
+              onBackgroundClick={() => { setInspect(null); setSelectedSlot(null); }}
             />
           </div>
         </main>
@@ -623,6 +628,7 @@ interface PitchProps {
   onSlotClick: (i: number) => void;
   onSlotPointerDown: (i: number, e: React.PointerEvent) => void;
   onSlotClear: (i: number) => void;
+  onBackgroundClick: () => void;
 }
 
 /**
@@ -639,6 +645,7 @@ export function FormationPitch({
   onSlotClick,
   onSlotPointerDown,
   onSlotClear,
+  onBackgroundClick,
 }: PitchProps) {
   const formation = getFormation(formationId);
 
@@ -648,6 +655,13 @@ export function FormationPitch({
       style={{
         background:
           'repeating-linear-gradient(0deg, #0F2015 0px, #0F2015 34px, #14291B 34px, #14291B 68px), linear-gradient(180deg, #0B1810, #0F2015)',
+      }}
+      onClick={(e) => {
+        // Only clear when the click didn't land on a slot card — slots have
+        // their own onClick that toggles inspect.
+        if (!(e.target as HTMLElement).closest('[data-slot-index]')) {
+          onBackgroundClick();
+        }
       }}
     >
       {/* Chalk markings, drawn with a slight turbulence filter. */}
