@@ -76,26 +76,24 @@ export default function SquadBuilder() {
     else if (src.index !== index) swapStarters(src.index, index);
   };
 
+  // Click == inspect only. Placing and swapping happens via drag-and-drop, so
+  // tapping a card to read a player's stats never quietly reorders the XI.
   const handleSlotClick = (index: number) => {
     audio.click();
-    if (selectedSlot === null) {
-      setSelectedSlot(index);
-      setInspect(starters[index]);
-    } else if (selectedSlot === index) {
+    const player = starters[index];
+    if (selectedSlot === index) {
       setSelectedSlot(null);
+      setInspect(null);
     } else {
-      swapStarters(selectedSlot, index);
-      setSelectedSlot(null);
+      setSelectedSlot(index);
+      setInspect(player);
     }
   };
 
   const handleBenchClick = (player: Player) => {
     audio.click();
-    setInspect(player);
-    if (selectedSlot !== null) {
-      setStarter(selectedSlot, player);
-      setSelectedSlot(null);
-    }
+    setInspect(inspect?.id === player.id ? null : player);
+    setSelectedSlot(null);
   };
 
   return (
