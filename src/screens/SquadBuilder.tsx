@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { audio } from '../audio/audio';
 import { PlayerCard } from '../components/PlayerCard';
 import { TeamCrest } from '../components/TeamCrest';
@@ -38,11 +38,30 @@ export default function SquadBuilder() {
   const [playerSearch, setPlayerSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState<PositionGroup | 'ALL'>('ALL');
   const [minRating, setMinRating] = useState(0);
-  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [inspect, setInspect] = useState<Player | null>(null);
   const [squadName, setSquadName] = useState('');
-  const dragRef = useRef<DragSource | null>(null);
+
+  // Pointer-drag state. `drag` is the live drag being rendered (source + ghost
+  // position + hit-tested slot under the pointer). `dragStartRef` tracks a
+  // pending drag that hasn't cleared the movement threshold yet — this is how
+  // we tell a click from a drag without either handler stepping on the other.
+  const [drag, setDrag] = useState<{
+    source: DragSource;
+    x: number;
+    y: number;
+    overSlot: number | null;
+  } | null>(null);
+  const dragStartRef = useRef<{
+    x: number;
+    y: number;
+    source: DragSource;
+    started: boolean;
+    pointerId: number;
+    // Set on pointerup after a real drag so the follow-up click on the drop
+    // target does not also fire the inspect handler.
+    suppressClickUntil: number;
+  } | null>(null);
 
   const benchPlayers = bench();
   const rating = squadRating();
@@ -66,19 +85,98 @@ export default function SquadBuilder() {
       .sort((a, b) => b.overall - a.overall);
   }, [benchPlayers, groupFilter, minRating, playerSearch]);
 
-  const handleDrop = (index: number) => {
-    const src = dragRef.current;
-    dragRef.current = null;
-    setDragOverSlot(null);
-    if (!src) return;
+  const handleDrop = (target: number, source: DragSource) => {
     audio.click();
-    if (src.kind === 'bench') setStarter(index, src.player);
-    else if (src.index !== index) swapStarters(src.index, index);
+    if (source.kind === 'bench') setStarter(target, source.player);
+    else if (source.index !== target) swapStarters(source.index, target);
   };
+
+  const beginDrag = (source: DragSource) => (e: React.PointerEvent) => {
+    // Only primary button / primary touch.
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      source,
+      started: false,
+      pointerId: e.pointerId,
+      suppressClickUntil: 0,
+    };
+  };
+
+  useEffect(() => {
+    const THRESHOLD = 6;
+
+    const hitTestSlot = (x: number, y: number): number | null => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      const slotEl = el?.closest('[data-slot-index]') as HTMLElement | null;
+      if (!slotEl) return null;
+      const idx = Number(slotEl.dataset.slotIndex);
+      return Number.isFinite(idx) ? idx : null;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const s = dragStartRef.current;
+      if (!s || e.pointerId !== s.pointerId) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      if (!s.started) {
+        if (Math.hypot(dx, dy) < THRESHOLD) return;
+        s.started = true;
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+      }
+      const overSlot = hitTestSlot(e.clientX, e.clientY);
+      setDrag({ source: s.source, x: e.clientX, y: e.clientY, overSlot });
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const s = dragStartRef.current;
+      if (!s || e.pointerId !== s.pointerId) return;
+      dragStartRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      if (s.started) {
+        const target = hitTestSlot(e.clientX, e.clientY);
+        if (target !== null) handleDrop(target, s.source);
+        // Guard: the browser will fire a click on whatever pointerup lands on.
+        // Suppress it briefly so we do not inspect the slot we just dropped on.
+        s.suppressClickUntil = Date.now() + 250;
+        dragStartRef.current = s;
+        setTimeout(() => {
+          if (dragStartRef.current === s) dragStartRef.current = null;
+        }, 260);
+      }
+      setDrag(null);
+    };
+
+    const onCancel = () => {
+      dragStartRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      setDrag(null);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+    // handleDrop is a stable closure that only reads current setters, which
+    // Zustand keeps stable, so an empty dep array is fine here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const wasDragging = () =>
+    !!dragStartRef.current && dragStartRef.current.suppressClickUntil > Date.now();
 
   // Click == inspect only. Placing and swapping happens via drag-and-drop, so
   // tapping a card to read a player's stats never quietly reorders the XI.
   const handleSlotClick = (index: number) => {
+    if (wasDragging()) return;
     audio.click();
     const player = starters[index];
     if (selectedSlot === index) {
@@ -91,6 +189,7 @@ export default function SquadBuilder() {
   };
 
   const handleBenchClick = (player: Player) => {
+    if (wasDragging()) return;
     audio.click();
     setInspect(inspect?.id === player.id ? null : player);
     setSelectedSlot(null);
@@ -244,12 +343,12 @@ export default function SquadBuilder() {
             <FormationPitch
               starters={starters}
               formationId={formationId}
-              dragOverSlot={dragOverSlot}
+              dragOverSlot={drag?.overSlot ?? null}
+              dragSourceSlot={drag?.source.kind === 'slot' ? drag.source.index : null}
               selectedSlot={selectedSlot}
+              dragging={!!drag}
               onSlotClick={handleSlotClick}
-              onSlotDragStart={(index) => { dragRef.current = { kind: 'slot', index }; }}
-              onSlotDragOver={setDragOverSlot}
-              onSlotDrop={handleDrop}
+              onSlotPointerDown={(index, e) => beginDrag({ kind: 'slot', index })(e)}
               onSlotClear={(index) => { audio.click(); setStarter(index, null); }}
             />
           </div>
@@ -310,9 +409,9 @@ export default function SquadBuilder() {
                 key={p.id}
                 player={p}
                 selected={inspect?.id === p.id}
+                dragging={drag?.source.kind === 'bench' && drag.source.player.id === p.id}
                 onClick={() => handleBenchClick(p)}
-                onDragStart={() => { dragRef.current = { kind: 'bench', player: p }; }}
-                onDragEnd={() => { dragRef.current = null; setDragOverSlot(null); }}
+                onPointerDown={beginDrag({ kind: 'bench', player: p })}
               />
             ))}
             {!filteredBench.length && (
@@ -369,6 +468,20 @@ export default function SquadBuilder() {
         </aside>
       </div>
 
+      {/* Drag ghost — a floating token that follows the pointer during a drag. */}
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-50"
+          style={{
+            left: drag.x,
+            top: drag.y,
+            transform: 'translate(-50%, -50%) rotate(-4deg)',
+          }}
+        >
+          <DragGhost source={drag.source} starters={starters} />
+        </div>
+      )}
+
       {/* Inspector card */}
       {inspect && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 w-72 -translate-x-1/2 lg:left-auto lg:right-[22.5rem] lg:translate-x-0">
@@ -415,25 +528,24 @@ function HeaderStat({
 function BenchRow({
   player,
   selected,
+  dragging,
   onClick,
-  onDragStart,
-  onDragEnd,
+  onPointerDown,
 }: {
   player: Player;
   selected: boolean;
+  dragging: boolean;
   onClick: () => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  onPointerDown: (e: React.PointerEvent) => void;
 }) {
   const group = POSITION_GROUP[player.position];
   const accent = GROUP_COLOR[group];
   return (
     <button
       type="button"
-      draggable
       onClick={onClick}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      onPointerDown={onPointerDown}
+      style={{ touchAction: 'none', visibility: dragging ? 'hidden' : 'visible' }}
       className={`group flex w-full cursor-grab items-center gap-3 border-b border-chalk/10 px-4 py-2.5 text-left transition active:cursor-grabbing
         ${selected ? 'bg-corner/10' : 'hover:bg-chalk/5'}`}
     >
@@ -462,17 +574,54 @@ function BenchRow({
   );
 }
 
+function DragGhost({
+  source,
+  starters,
+}: {
+  source: DragSource;
+  starters: (Player | null)[];
+}) {
+  const player = source.kind === 'bench' ? source.player : starters[source.index];
+  if (!player) return null;
+  const group = POSITION_GROUP[player.position];
+  const accent = GROUP_COLOR[group];
+  return (
+    <div
+      className="flex items-stretch gap-2 border border-corner bg-pitch-900/95 px-2.5 py-2 shadow-[0_10px_30px_-6px_rgba(0,0,0,0.7),0_0_0_2px_rgba(229,72,77,0.35)]"
+      style={{ borderRadius: '2px', minWidth: '10rem' }}
+    >
+      <span className="w-[3px] shrink-0" style={{ background: accent }} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="stencil-num text-[18px] leading-none text-chalk">
+            {player.overall}
+          </span>
+          <span className="font-stencil text-[11px] font-bold uppercase" style={{ color: accent }}>
+            {player.position}
+          </span>
+          <span className="ml-auto font-mono text-[10px] text-chalk-dim/80">
+            #{player.number}
+          </span>
+        </div>
+        <div className="mt-0.5 truncate font-editorial text-[12px] font-semibold text-chalk">
+          {player.name}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================================================================== */
 
 interface PitchProps {
   starters: (Player | null)[];
   formationId: string;
   dragOverSlot: number | null;
+  dragSourceSlot: number | null;
   selectedSlot: number | null;
+  dragging: boolean;
   onSlotClick: (i: number) => void;
-  onSlotDragStart: (i: number) => void;
-  onSlotDragOver: (i: number | null) => void;
-  onSlotDrop: (i: number) => void;
+  onSlotPointerDown: (i: number, e: React.PointerEvent) => void;
   onSlotClear: (i: number) => void;
 }
 
@@ -484,11 +633,11 @@ export function FormationPitch({
   starters,
   formationId,
   dragOverSlot,
+  dragSourceSlot,
   selectedSlot,
+  dragging,
   onSlotClick,
-  onSlotDragStart,
-  onSlotDragOver,
-  onSlotDrop,
+  onSlotPointerDown,
   onSlotClear,
 }: PitchProps) {
   const formation = getFormation(formationId);
@@ -546,6 +695,7 @@ export function FormationPitch({
         const left = `${slot.y * 84 + 8}%`;
         const isOver = dragOverSlot === i;
         const isSelected = selectedSlot === i;
+        const isSource = dragSourceSlot === i;
         const fit = player ? positionAffinity(player.position, slot.position) : 0;
         const accent = GROUP_COLOR[slot.group];
 
@@ -556,22 +706,23 @@ export function FormationPitch({
             style={{ top, left }}
           >
             <div
-              draggable={!!player}
-              onDragStart={() => onSlotDragStart(i)}
-              onDragEnd={() => onSlotDragOver(null)}
-              onDragOver={(e) => { e.preventDefault(); onSlotDragOver(i); }}
-              onDragLeave={() => onSlotDragOver(null)}
-              onDrop={(e) => { e.preventDefault(); onSlotDrop(i); }}
+              data-slot-index={i}
+              onPointerDown={player ? (e) => onSlotPointerDown(i, e) : undefined}
               onClick={() => onSlotClick(i)}
-              className={`group relative flex w-[5.1rem] cursor-pointer flex-col items-stretch text-left transition-all
+              className={`group relative flex w-[5.1rem] flex-col items-stretch text-left transition-[border-color,background,opacity]
+                ${player ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
                 ${isOver
-                  ? 'scale-105 border border-corner bg-pitch-950/95 shadow-[0_0_0_2px_rgba(229,72,77,0.6),0_0_20px_rgba(229,72,77,0.35)]'
+                  ? 'border border-corner bg-pitch-950/95'
                   : isSelected
                   ? 'border border-corner bg-pitch-950/95'
                   : player
                   ? 'border border-chalk/25 bg-pitch-950/85 hover:border-chalk/60'
-                  : 'border border-dashed border-chalk/30 bg-pitch-950/60'}`}
-              style={{ borderRadius: '2px' }}
+                  : `border border-dashed ${dragging ? 'border-chalk/70 bg-pitch-950/80' : 'border-chalk/30 bg-pitch-950/60'}`}`}
+              style={{
+                borderRadius: '2px',
+                touchAction: player ? 'none' : 'auto',
+                visibility: isSource ? 'hidden' : 'visible',
+              }}
             >
               {/* Position tag — bar-scroll style. */}
               <span
