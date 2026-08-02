@@ -66,7 +66,6 @@ export default function SquadBuilder() {
       .sort((a, b) => b.overall - a.overall);
   }, [benchPlayers, groupFilter, minRating, playerSearch]);
 
-  /** Resolve a drop onto a formation slot from either source. */
   const handleDrop = (index: number) => {
     const src = dragRef.current;
     dragRef.current = null;
@@ -77,7 +76,6 @@ export default function SquadBuilder() {
     else if (src.index !== index) swapStarters(src.index, index);
   };
 
-  /** Click-to-place fallback for touch devices, where HTML5 drag is unreliable. */
   const handleSlotClick = (index: number) => {
     audio.click();
     if (selectedSlot === null) {
@@ -101,99 +99,150 @@ export default function SquadBuilder() {
   };
 
   return (
-    <div className="grid-bg flex h-full w-full flex-col bg-navy-950">
-      {/* Header */}
-      <header className="z-20 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-navy-950/85 px-5 py-3 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setScreen('landing')} className="btn-ghost !px-3 !py-2 !text-[11px]">
-            ← Back
-          </button>
-          <h1 className="heading text-lg sm:text-xl">Squad Builder</h1>
+    <div className="pitch-bg flex h-full w-full flex-col font-editorial text-chalk">
+      {/* ─────────────────────── Match-card header ─────────────────────── */}
+      <header className="z-20 flex shrink-0 items-stretch border-b border-chalk/15">
+        <button
+          onClick={() => setScreen('landing')}
+          className="flex items-center gap-2 border-r border-chalk/15 px-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-chalk-dim transition hover:text-chalk"
+        >
+          <span className="font-mono">←</span> Back
+        </button>
+        <div className="flex items-center gap-3 border-r border-chalk/15 px-5 py-3">
+          <span className="stencil-num flex h-9 w-9 items-center justify-center bg-chalk text-[18px] leading-none text-pitch-950">
+            02
+          </span>
+          <div className="leading-none">
+            <div className="font-stencil text-[18px] font-extrabold tracking-tight uppercase">
+              Team Sheet
+            </div>
+            <div className="eyebrow mt-1">Assemble XI · pick a shape</div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { audio.click(); autoPickSquad(); }} className="btn-ghost !px-4 !py-2 !text-[11px]">
-            Auto Pick
-          </button>
-          <button
-            onClick={() => { audio.confirm(); setScreen('setup'); }}
-            disabled={filledCount < 11}
-            className="btn-primary !px-5 !py-2 !text-[11px]"
-            title={filledCount < 11 ? 'Fill all eleven positions first' : undefined}
-          >
-            Continue →
-          </button>
+
+        {/* Current team readout, tucked into the header like a match card. */}
+        <div className="hidden items-center gap-3 border-r border-chalk/15 px-5 md:flex">
+          <TeamCrest team={team} size={30} />
+          <div className="leading-tight">
+            <div className="font-stencil text-[13px] font-bold uppercase text-chalk">
+              {team.shortName}
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-chalk-dim">
+              {team.league}
+            </div>
+          </div>
+        </div>
+
+        {/* Ratings block */}
+        <div className="ml-auto flex items-stretch">
+          <HeaderStat label="OVR" value={rating} accent={rating >= 85 ? 'chalk' : 'dim'} />
+          <HeaderStat label="Chem" value={`${chem}`} suffix="%" accent={chem >= 75 ? 'chalk' : 'dim'} />
+          <HeaderStat label="Filled" value={`${filledCount}/11`} accent={filledCount === 11 ? 'chalk' : 'corner'} />
+          <div className="flex items-center gap-2 border-l border-chalk/15 px-4">
+            <button
+              onClick={() => { audio.click(); autoPickSquad(); }}
+              className="ghost-btn !py-2 !px-4 !text-[12px]"
+            >
+              Auto pick
+            </button>
+            <button
+              onClick={() => { audio.confirm(); setScreen('setup'); }}
+              disabled={filledCount < 11}
+              className="kick-btn !py-2 !px-4 !text-[14px] disabled:cursor-not-allowed disabled:opacity-40"
+              title={filledCount < 11 ? 'Fill all eleven positions first' : undefined}
+            >
+              Continue <span className="whistle">→</span>
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* ---------------- Left: club selection ---------------- */}
-        <aside className="flex w-full shrink-0 flex-col border-b border-white/10 lg:w-72 lg:border-b-0 lg:border-r">
-          <div className="p-3">
-            <div className="label mb-2">Choose your club</div>
+        {/* ─────────────────────── Left: club selector ─────────────────────── */}
+        <aside className="flex w-full shrink-0 flex-col border-b border-chalk/15 lg:w-[300px] lg:border-b-0 lg:border-r">
+          <div className="border-b border-chalk/10 p-4">
+            <div className="eyebrow">Your club</div>
             <input
               value={teamSearch}
               onChange={(e) => setTeamSearch(e.target.value)}
               placeholder="Search clubs…"
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-white/30 focus:border-cyan/60"
+              className="mt-3 w-full border border-chalk/20 bg-pitch-950/60 px-3 py-2 font-editorial text-[13px] text-chalk outline-none transition placeholder:text-chalk-dim/50 focus:border-corner"
             />
           </div>
-          <div className="max-h-56 flex-1 overflow-y-auto px-3 pb-3 scroll-thin lg:max-h-none">
+
+          <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
             {filteredLeagues.map((league) => (
-              <div key={league.id} className="mb-4">
-                <div className="sticky top-0 z-10 bg-navy-950/90 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35 backdrop-blur">
-                  {league.name}
+              <div key={league.id} className="border-b border-chalk/10 last:border-b-0">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-chalk/10 bg-pitch-950/95 px-4 py-2 backdrop-blur">
+                  <span className="eyebrow">{league.name}</span>
+                  <span className="font-mono text-[9px] text-chalk-dim/60">
+                    {league.teams.length}
+                  </span>
                 </div>
-                <div className="space-y-1">
+                <ul>
                   {league.teams.map((t) => {
                     const active = t.id === userTeamId;
                     return (
-                      <button
-                        key={t.id}
-                        onClick={() => { audio.click(); selectTeam(t.id); setSelectedSlot(null); }}
-                        onMouseEnter={() => audio.hover()}
-                        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition
-                          ${active ? 'border-cyan/60 bg-cyan/10' : 'border-transparent hover:border-white/15 hover:bg-white/5'}`}
-                      >
-                        <TeamCrest team={t} size={28} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold">{t.name}</span>
-                          <span className="text-[10px] text-white/40">Squad rating {t.rating}</span>
-                        </span>
-                        <span
-                          className="h-6 w-1.5 rounded-full"
-                          style={{ background: `linear-gradient(${t.primaryColor}, ${t.secondaryColor})` }}
-                        />
-                      </button>
+                      <li key={t.id}>
+                        <button
+                          onClick={() => { audio.click(); selectTeam(t.id); setSelectedSlot(null); }}
+                          onMouseEnter={() => audio.hover()}
+                          className={`group flex w-full items-center gap-3 border-b border-chalk/5 px-4 py-2.5 text-left transition
+                            ${active ? 'bg-corner/10' : 'hover:bg-chalk/5'}`}
+                        >
+                          {/* Kit-color bar as the club's identity marker. */}
+                          <span
+                            className="h-9 w-[3px] shrink-0"
+                            style={{ background: t.primaryColor }}
+                            aria-hidden
+                          />
+                          <TeamCrest team={t} size={30} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate font-stencil text-[13px] font-bold uppercase transition ${active ? 'text-corner' : 'text-chalk group-hover:text-chalk'}`}>
+                              {t.name}
+                            </span>
+                            <span className="font-mono text-[9px] uppercase tracking-widest text-chalk-dim/70">
+                              OVR {t.rating}
+                            </span>
+                          </span>
+                          {active && (
+                            <span className="font-mono text-[9px] uppercase tracking-widest text-corner">
+                              ●
+                            </span>
+                          )}
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               </div>
             ))}
           </div>
         </aside>
 
-        {/* ---------------- Centre: formation pitch ---------------- */}
+        {/* ─────────────────────── Centre: formation pitch ─────────────────────── */}
         <main className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
-            <span className="label mr-1">Formation</span>
+          <div className="flex flex-wrap items-center gap-2 border-b border-chalk/15 px-5 py-3">
+            <span className="eyebrow mr-2">Formation</span>
             {FORMATIONS.map((f) => (
               <button
                 key={f.id}
                 onClick={() => { audio.click(); setFormation(f.id); setSelectedSlot(null); }}
                 onMouseEnter={() => audio.hover()}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-bold tracking-wider transition
-                  ${f.id === formationId ? 'border-cyan bg-cyan/15 text-cyan shadow-glow' : 'border-white/12 text-white/55 hover:border-white/30 hover:text-white'}`}
+                className={`border px-3 py-1.5 font-stencil text-[12px] font-bold uppercase tracking-[0.08em] transition
+                  ${f.id === formationId
+                    ? 'border-corner bg-corner text-chalk'
+                    : 'border-chalk/20 text-chalk-dim hover:border-chalk/50 hover:text-chalk'}`}
               >
                 {f.name}
               </button>
             ))}
+            <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-chalk-dim/70">
+              {formation.description}
+            </span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 scroll-thin">
-            <p className="mb-3 text-center text-xs text-white/40">
-              {formation.description}
-            </p>
-
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 scroll-thin">
             <FormationPitch
               starters={starters}
               formationId={formationId}
@@ -208,60 +257,39 @@ export default function SquadBuilder() {
           </div>
         </main>
 
-        {/* ---------------- Right: squad summary + bench ---------------- */}
-        <aside className="flex w-full shrink-0 flex-col border-t border-white/10 lg:w-[22rem] lg:border-l lg:border-t-0">
-          <div className="border-b border-white/10 p-4">
-            <div className="flex items-center gap-3">
-              <TeamCrest team={team} size={44} />
-              <div className="min-w-0">
-                <div className="truncate font-display text-base font-bold">{team.name}</div>
-                <div className="text-[11px] text-white/40">{team.league}</div>
-              </div>
+        {/* ─────────────────────── Right: bench + saved squads ─────────────────────── */}
+        <aside className="flex w-full shrink-0 flex-col border-t border-chalk/15 lg:w-[340px] lg:border-l lg:border-t-0">
+          {/* Bench header */}
+          <div className="border-b border-chalk/10 p-4">
+            <div className="flex items-baseline justify-between">
+              <span className="eyebrow">Squad · bench</span>
+              <span className="font-mono text-[10px] text-chalk-dim/70">
+                {filteredBench.length} available
+              </span>
             </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <Stat label="Avg OVR" value={rating} tone={rating >= 85 ? 'gold' : 'cyan'} />
-              <Stat label="Chemistry" value={chem} tone={chem >= 75 ? 'green' : chem >= 50 ? 'cyan' : 'red'} suffix="%" />
-              <Stat label="Shape" value={formation.name} tone="plain" />
-            </div>
-
-            <div className="mt-3">
-              <div className="mb-1 flex justify-between text-[10px] uppercase tracking-widest text-white/40">
-                <span>Squad complete</span>
-                <span>{filledCount}/11</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan to-gold transition-all duration-500"
-                  style={{ width: `${(filledCount / 11) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Bench + filters */}
-          <div className="border-b border-white/10 p-3">
-            <div className="label mb-2">Squad ({filteredBench.length})</div>
             <input
               value={playerSearch}
               onChange={(e) => setPlayerSearch(e.target.value)}
               placeholder="Search players…"
-              className="mb-2 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-white/30 focus:border-cyan/60"
+              className="mt-3 w-full border border-chalk/20 bg-pitch-950/60 px-3 py-2 font-editorial text-[13px] text-chalk outline-none transition placeholder:text-chalk-dim/50 focus:border-corner"
             />
-            <div className="flex flex-wrap gap-1">
+
+            <div className="mt-3 flex flex-wrap gap-1">
               {GROUP_FILTERS.map((g) => (
                 <button
                   key={g}
                   onClick={() => setGroupFilter(g)}
-                  className={`rounded-md px-2.5 py-1 text-[10px] font-bold tracking-wider transition
-                    ${groupFilter === g ? 'bg-cyan/20 text-cyan' : 'bg-white/5 text-white/45 hover:text-white'}`}
-                  style={groupFilter === g && g !== 'ALL' ? { color: GROUP_COLOR[g], background: `${GROUP_COLOR[g]}22` } : undefined}
+                  className={`border px-2.5 py-1 font-stencil text-[10px] font-bold tracking-[0.1em] transition
+                    ${groupFilter === g
+                      ? 'border-corner bg-corner/15 text-corner'
+                      : 'border-chalk/15 text-chalk-dim hover:border-chalk/40 hover:text-chalk'}`}
                 >
                   {g}
                 </button>
               ))}
             </div>
-            <label className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/40">
+
+            <label className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-chalk-dim">
               Min OVR
               <input
                 type="range"
@@ -271,17 +299,18 @@ export default function SquadBuilder() {
                 onChange={(e) => setMinRating(Number(e.target.value))}
                 className="flex-1"
               />
-              <span className="w-6 text-right font-bold text-cyan">{minRating}</span>
+              <span className="stencil-num w-6 text-right text-[14px] text-chalk">
+                {minRating}
+              </span>
             </label>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3 scroll-thin">
+          {/* Bench list — team-sheet rows */}
+          <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
             {filteredBench.map((p) => (
-              <PlayerCard
+              <BenchRow
                 key={p.id}
                 player={p}
-                compact
-                draggable
                 selected={inspect?.id === p.id}
                 onClick={() => handleBenchClick(p)}
                 onDragStart={() => { dragRef.current = { kind: 'bench', player: p }; }}
@@ -289,63 +318,67 @@ export default function SquadBuilder() {
               />
             ))}
             {!filteredBench.length && (
-              <p className="py-8 text-center text-xs text-white/30">No players match those filters.</p>
+              <p className="py-8 text-center font-mono text-[11px] uppercase tracking-widest text-chalk-dim/60">
+                No players match those filters.
+              </p>
             )}
           </div>
 
           {/* Saved squads */}
-          <div className="border-t border-white/10 p-3">
-            <div className="label mb-2">Saved squads</div>
-            <div className="flex gap-2">
+          <div className="border-t border-chalk/15 p-4">
+            <div className="eyebrow">Saved sheets</div>
+            <div className="mt-3 flex gap-2">
               <input
                 value={squadName}
                 onChange={(e) => setSquadName(e.target.value)}
-                placeholder="Name this squad"
-                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs outline-none placeholder:text-white/30 focus:border-cyan/60"
+                placeholder="Name this sheet"
+                className="min-w-0 flex-1 border border-chalk/20 bg-pitch-950/60 px-3 py-2 font-editorial text-[12px] text-chalk outline-none transition placeholder:text-chalk-dim/50 focus:border-corner"
               />
               <button
                 onClick={() => { audio.confirm(); saveSquad(squadName); setSquadName(''); }}
-                className="btn-ghost !px-3 !py-2 !text-[10px]"
+                className="ghost-btn !py-2 !px-3 !text-[11px]"
               >
                 Save
               </button>
             </div>
             {savedSquads.length > 0 && (
-              <div className="mt-2 max-h-28 space-y-1 overflow-y-auto scroll-thin">
+              <ul className="mt-3 max-h-32 divide-y divide-chalk/10 overflow-y-auto scroll-thin border-t border-chalk/10">
                 {savedSquads.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5">
+                  <li key={s.id} className="flex items-center gap-2 py-2">
                     <button
                       onClick={() => { audio.click(); loadSquad(s.id); }}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <span className="block truncate text-[11px] font-semibold">{s.name}</span>
-                      <span className="text-[9px] text-white/35">
+                      <span className="block truncate font-stencil text-[12px] font-bold uppercase text-chalk">
+                        {s.name}
+                      </span>
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-chalk-dim/60">
                         {getTeam(s.teamId).shortName} · {s.formationId}
                       </span>
                     </button>
                     <button
                       onClick={() => deleteSquad(s.id)}
-                      className="text-white/25 transition hover:text-danger"
+                      className="font-mono text-[13px] text-chalk-dim/50 transition hover:text-corner"
                       aria-label={`Delete ${s.name}`}
                     >
                       ✕
                     </button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         </aside>
       </div>
 
-      {/* Inspector */}
+      {/* Inspector card */}
       {inspect && (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 w-72 -translate-x-1/2 lg:left-auto lg:right-[23.5rem] lg:translate-x-0">
-          <div className="pointer-events-auto animate-fadeUp">
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 w-72 -translate-x-1/2 lg:left-auto lg:right-[22.5rem] lg:translate-x-0">
+          <div className="pointer-events-auto">
             <PlayerCard player={inspect} />
             <button
               onClick={() => setInspect(null)}
-              className="mt-2 w-full rounded-lg bg-white/5 py-1.5 text-[10px] uppercase tracking-widest text-white/40 hover:text-white"
+              className="mt-2 w-full border border-chalk/15 bg-pitch-950/80 py-2 font-mono text-[10px] uppercase tracking-widest text-chalk-dim transition hover:text-chalk"
             >
               Close
             </button>
@@ -356,31 +389,82 @@ export default function SquadBuilder() {
   );
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 
-function Stat({
+function HeaderStat({
   label,
   value,
-  tone,
   suffix = '',
+  accent,
 }: {
   label: string;
   value: string | number;
-  tone: 'gold' | 'cyan' | 'green' | 'red' | 'plain';
   suffix?: string;
+  accent: 'chalk' | 'dim' | 'corner';
 }) {
-  const color =
-    tone === 'gold' ? '#FFD700' : tone === 'green' ? '#4ADE80' : tone === 'red' ? '#FF4444' : tone === 'cyan' ? '#00D9FF' : '#FFFFFF';
+  const color = accent === 'corner' ? 'text-corner' : accent === 'dim' ? 'text-chalk-dim' : 'text-chalk';
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2.5">
-      <div className="text-[9px] font-bold uppercase tracking-widest text-white/35">{label}</div>
-      <div className="mt-0.5 font-display text-lg font-extrabold" style={{ color }}>
+    <div className="hidden flex-col items-end justify-center border-l border-chalk/15 px-5 sm:flex">
+      <div className="eyebrow">{label}</div>
+      <div className={`stencil-num mt-0.5 text-[20px] leading-none ${color}`}>
         {value}
         {suffix}
       </div>
     </div>
   );
 }
+
+function BenchRow({
+  player,
+  selected,
+  onClick,
+  onDragStart,
+  onDragEnd,
+}: {
+  player: Player;
+  selected: boolean;
+  onClick: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const group = POSITION_GROUP[player.position];
+  const accent = GROUP_COLOR[group];
+  return (
+    <button
+      type="button"
+      draggable
+      onClick={onClick}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`group flex w-full cursor-grab items-center gap-3 border-b border-chalk/10 px-4 py-2.5 text-left transition active:cursor-grabbing
+        ${selected ? 'bg-corner/10' : 'hover:bg-chalk/5'}`}
+    >
+      <span className="stencil-num w-8 text-right text-[20px] leading-none text-chalk">
+        {player.overall}
+      </span>
+      <span
+        className="w-[3px] self-stretch"
+        style={{ background: accent }}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-editorial text-[13px] font-semibold text-chalk">
+          {player.name}
+        </span>
+        <span className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-chalk-dim/80">
+          <span style={{ color: accent }} className="font-bold">
+            {player.position}
+          </span>
+          <span aria-hidden>{FLAG[player.nationality] ?? '·'}</span>
+          <span className="truncate">{player.nationality}</span>
+        </span>
+      </span>
+      <span className="font-mono text-[10px] text-chalk-dim/60">#{player.number}</span>
+    </button>
+  );
+}
+
+/* ================================================================== */
 
 interface PitchProps {
   starters: (Player | null)[];
@@ -394,7 +478,10 @@ interface PitchProps {
   onSlotClear: (i: number) => void;
 }
 
-/** Vertical mini-pitch with a draggable card at each formation slot. */
+/**
+ * Chalk-on-grass formation pitch. Slot cards look like team-sheet tokens —
+ * shirt number top-left, name and position, kit-color rail on the left edge.
+ */
 export function FormationPitch({
   starters,
   formationId,
@@ -410,42 +497,59 @@ export function FormationPitch({
 
   return (
     <div
-      className="relative mx-auto aspect-[68/105] w-full max-w-[30rem] overflow-hidden rounded-2xl border border-white/15"
+      className="relative mx-auto aspect-[68/105] w-full max-w-[32rem] overflow-hidden border border-chalk/20"
       style={{
         background:
-          'repeating-linear-gradient(0deg,#17532580 0px,#17532580 34px,#1c6a2e80 34px,#1c6a2e80 68px), linear-gradient(180deg,#0d3a1a,#155029)',
+          'repeating-linear-gradient(0deg, #0F2015 0px, #0F2015 34px, #14291B 34px, #14291B 68px), linear-gradient(180deg, #0B1810, #0F2015)',
       }}
     >
-      {/* Markings */}
+      {/* Chalk markings, drawn with a slight turbulence filter. */}
       <svg viewBox="0 0 68 105" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-        <g fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.4">
+        <defs>
+          <filter id="pitch-chalk" x="-5%" y="-5%" width="110%" height="110%">
+            <feTurbulence baseFrequency="1.1" numOctaves="2" seed="7" />
+            <feDisplacementMap in="SourceGraphic" scale="0.35" />
+          </filter>
+        </defs>
+        <g
+          fill="none"
+          stroke="#F2EFE4"
+          strokeWidth="0.28"
+          opacity="0.55"
+          strokeLinecap="round"
+          filter="url(#pitch-chalk)"
+          vectorEffect="non-scaling-stroke"
+        >
           <rect x="0.5" y="0.5" width="67" height="104" />
           <line x1="0.5" y1="52.5" x2="67.5" y2="52.5" />
           <circle cx="34" cy="52.5" r="9.15" />
-          <circle cx="34" cy="52.5" r="0.5" fill="rgba(255,255,255,0.5)" />
+          <circle cx="34" cy="52.5" r="0.6" fill="#F2EFE4" stroke="none" />
           {/* Bottom (own) end */}
           <rect x="13.84" y="88.54" width="40.32" height="16.46" />
           <rect x="24.84" y="99.51" width="18.32" height="5.49" />
-          <circle cx="34" cy="94.03" r="0.5" fill="rgba(255,255,255,0.5)" />
+          <circle cx="34" cy="94.03" r="0.6" fill="#F2EFE4" stroke="none" />
           <path d="M24.9 88.54 A9.15 9.15 0 0 0 43.1 88.54" />
           {/* Top (opposition) end */}
           <rect x="13.84" y="0" width="40.32" height="16.46" />
           <rect x="24.84" y="0" width="18.32" height="5.49" />
-          <circle cx="34" cy="10.97" r="0.5" fill="rgba(255,255,255,0.5)" />
+          <circle cx="34" cy="10.97" r="0.6" fill="#F2EFE4" stroke="none" />
           <path d="M24.9 16.46 A9.15 9.15 0 0 1 43.1 16.46" />
+          {/* Corner arcs */}
+          <path d="M0.5 3 A2.5 2.5 0 0 0 3 0.5" />
+          <path d="M65 0.5 A2.5 2.5 0 0 0 67.5 3" />
+          <path d="M0.5 102 A2.5 2.5 0 0 1 3 104.5" />
+          <path d="M65 104.5 A2.5 2.5 0 0 1 67.5 102" />
         </g>
       </svg>
 
       {formation.slots.map((slot, i) => {
         const player = starters[i];
-        // slot.x runs from own goal (0) to opposition goal (1); the pitch is drawn
-        // with our goal at the bottom, so invert for the CSS top offset.
         const top = `${(1 - slot.x) * 88 + 6}%`;
         const left = `${slot.y * 84 + 8}%`;
         const isOver = dragOverSlot === i;
         const isSelected = selectedSlot === i;
         const fit = player ? positionAffinity(player.position, slot.position) : 0;
-        const fitColor = fit >= 1 ? '#4ADE80' : fit >= 0.7 ? '#FFD700' : fit > 0 ? '#FF9F45' : '#FF4444';
+        const accent = GROUP_COLOR[slot.group];
 
         return (
           <div
@@ -461,37 +565,62 @@ export function FormationPitch({
               onDragLeave={() => onSlotDragOver(null)}
               onDrop={(e) => { e.preventDefault(); onSlotDrop(i); }}
               onClick={() => onSlotClick(i)}
-              className={`group relative flex w-[4.6rem] cursor-pointer flex-col items-center rounded-xl border px-1 py-1.5 text-center backdrop-blur-sm transition-all
-                ${isOver ? 'slot-drop-active border-cyan' : isSelected ? 'border-cyan bg-cyan/20' : player ? 'border-white/25 bg-navy-950/75 hover:border-white/50' : 'border-dashed border-white/35 bg-navy-950/45'}`}
+              className={`group relative flex w-[5.1rem] cursor-pointer flex-col items-stretch text-left transition-all
+                ${isOver
+                  ? 'scale-105 border border-corner bg-pitch-950/95 shadow-[0_0_0_2px_rgba(229,72,77,0.6),0_0_20px_rgba(229,72,77,0.35)]'
+                  : isSelected
+                  ? 'border border-corner bg-pitch-950/95'
+                  : player
+                  ? 'border border-chalk/25 bg-pitch-950/85 hover:border-chalk/60'
+                  : 'border border-dashed border-chalk/30 bg-pitch-950/60'}`}
+              style={{ borderRadius: '2px' }}
             >
+              {/* Position tag — bar-scroll style. */}
               <span
-                className="absolute -top-1.5 rounded px-1 text-[8px] font-black tracking-wider"
-                style={{ background: GROUP_COLOR[slot.group], color: '#050B18' }}
+                className="absolute -top-[9px] left-1 px-1 font-stencil text-[9px] font-extrabold tracking-[0.1em] text-pitch-950"
+                style={{ background: accent }}
               >
                 {slot.position}
               </span>
 
               {player ? (
-                <>
-                  <span className="mt-1.5 font-display text-base font-extrabold leading-none" style={{ color: fitColor }}>
-                    {player.overall}
-                  </span>
-                  <span className="mt-0.5 w-full truncate text-[9px] font-semibold leading-tight text-white/85">
-                    {player.name.split(' ').slice(-1)[0]}
-                  </span>
-                  <span className="text-[8px] leading-none text-white/40">
-                    {FLAG[player.nationality] ?? ''} #{player.number}
-                  </span>
+                <div className="flex items-stretch gap-1.5 pt-2 pb-1.5 pl-1.5 pr-2">
+                  {/* Kit rail on the left, colored by the position group. */}
+                  <span
+                    className="w-[2px] shrink-0"
+                    style={{ background: accent, opacity: fit >= 1 ? 1 : fit >= 0.7 ? 0.6 : 0.3 }}
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="stencil-num text-[18px] leading-none text-chalk">
+                        {player.overall}
+                      </span>
+                      <span className="ml-auto font-mono text-[9px] text-chalk-dim/70">
+                        #{player.number}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate font-editorial text-[10px] font-semibold leading-tight text-chalk">
+                      {player.name.split(' ').slice(-1)[0]}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1 font-mono text-[8px] uppercase leading-none text-chalk-dim/70">
+                      <span aria-hidden>{FLAG[player.nationality] ?? ''}</span>
+                      <span className="truncate">{player.nationality.slice(0, 3)}</span>
+                    </div>
+                  </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); onSlotClear(i); }}
-                    className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-danger text-[9px] font-bold text-white group-hover:flex"
+                    className="absolute -right-[7px] -top-[7px] hidden h-4 w-4 items-center justify-center bg-corner font-mono text-[9px] font-bold text-chalk group-hover:flex"
+                    style={{ borderRadius: '2px' }}
                     aria-label={`Remove ${player.name}`}
                   >
                     ✕
                   </button>
-                </>
+                </div>
               ) : (
-                <span className="py-2 text-[9px] uppercase tracking-widest text-white/35">Empty</span>
+                <span className="px-2 py-3 text-center font-mono text-[9px] uppercase tracking-widest text-chalk-dim/50">
+                  Empty
+                </span>
               )}
             </div>
           </div>
