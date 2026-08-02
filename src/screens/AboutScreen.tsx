@@ -108,7 +108,7 @@ export default function AboutScreen() {
         </div>
 
         <p className="mt-12 text-center text-xs text-white/30">
-          Built with React, TypeScript, Zustand, Tailwind and Canvas 2D. Not affiliated with EA Sports or FIFA.
+          Built with React, TypeScript, Zustand, Tailwind and Canvas 2D.
         </p>
       </div>
     </div>

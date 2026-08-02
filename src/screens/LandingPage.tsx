@@ -317,7 +317,7 @@ export default function LandingPage() {
             </span>
             <div className="text-left leading-none">
               <div className="font-stencil text-[22px] font-extrabold tracking-tight text-chalk">
-                FIFA <span className="text-corner">/</span> 26
+                STRIKER<span className="text-corner"></span>
               </div>
               <div className="eyebrow mt-1">The Simulated Season</div>
             </div>
@@ -616,9 +616,9 @@ export default function LandingPage() {
       {/* ─────────────────────── Footer ─────────────────────── */}
       <footer className="border-t border-chalk/15">
         <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-4 px-6 py-6 font-mono text-[10px] uppercase tracking-[0.2em] text-chalk-dim/60">
-          <span>FIFA 26 · React + TypeScript + Canvas</span>
-          <span>Not affiliated with EA Sports or FIFA</span>
-          <span>Season 25/26 · v0.1</span>
+          <span>STRIKER · React + TypeScript + Canvas</span>
+          <span>A football simulation</span>
+          <span>v0.1</span>
         </div>
       </footer>
     </div>

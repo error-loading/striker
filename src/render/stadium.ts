@@ -225,7 +225,7 @@ export class StadiumScene {
   private drawAdBoards(ctx: CanvasRenderingContext2D, cam: Camera, s: SideFrame, time: number) {
     const height = 1.05;
     const panels = Math.round(s.span / 6);
-    const messages = ['FIFA 26', 'THE BEAUTIFUL GAME', 'REDEFINED', 'MATCHDAY LIVE'];
+    const messages = ['STRIKER', 'THE BEAUTIFUL GAME', 'REDEFINED', 'MATCHDAY LIVE'];
 
     for (let i = 0; i < panels; i++) {
       const a0 = (s.span * i) / panels;
@@ -247,7 +247,7 @@ export class StadiumScene {
       const mid2 = this.point(s, a1 - 0.4, 0.48, height * 0.66);
       const mid3 = this.point(s, a0 + 0.4, 0.48, height * 0.66);
       const msg = messages[(i + Math.floor(time * 0.35)) % messages.length];
-      const glow = msg === 'FIFA 26' ? 'rgba(0,217,255,0.85)' : 'rgba(255,215,0,0.6)';
+      const glow = msg === 'STRIKER' ? 'rgba(0,217,255,0.85)' : 'rgba(255,215,0,0.6)';
       fillWorldPoly(ctx, cam, [mid0, mid1, mid2, mid3], glow);
     }
   }

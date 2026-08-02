@@ -48,7 +48,7 @@ export const ACTIONS: ActionMeta[] = [
 
 export type Bindings = Record<Action, string>;
 
-/** FIFA-style defaults, matching the brief. */
+/** Football-simulation-style defaults, matching the brief. */
 export const DEFAULT_BINDINGS: Bindings = {
   moveUp: 'KeyW',
   moveDown: 'KeyS',
