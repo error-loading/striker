@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --navy-950: #050b18;
+  --navy-900: #0a1428;
+  --cyan: #00d9ff;
+  --gold: #ffd700;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--navy-950);
+  color: #ffffff;
+  font-family: Inter, 'Open Sans', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+@layer components {
+  .glass {
+    @apply border border-white/10 bg-white/[0.045] backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply border border-white/[0.14] bg-navy-900/80 backdrop-blur-2xl;
+  }
+
+  .btn {
+    @apply relative inline-flex select-none items-center justify-center gap-2 rounded-xl px-6 py-3
+      text-sm font-bold uppercase tracking-[0.14em] transition-all duration-200 disabled:cursor-not-allowed
+      disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn text-navy-950;
+    background: linear-gradient(135deg, #00d9ff 0%, #46e6ff 50%, #00b4d8 100%);
+    box-shadow: 0 6px 22px -6px rgba(0, 217, 255, 0.65);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 8px 34px -4px rgba(0, 217, 255, 0.95);
+    transform: translateY(-1px);
+  }
+
+  .btn-gold {
+    @apply btn text-navy-950;
+    background: linear-gradient(135deg, #ffd700 0%, #ffe870 50%, #e0b400 100%);
+    box-shadow: 0 6px 22px -6px rgba(255, 215, 0, 0.6);
+  }
+
+  .btn-gold:hover:not(:disabled) {
+    box-shadow: 0 8px 34px -4px rgba(255, 215, 0, 0.9);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    @apply btn border border-white/15 bg-white/[0.03] text-white/85 backdrop-blur;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    @apply border-cyan/60 bg-cyan/10 text-white;
+    box-shadow: 0 0 22px -4px rgba(0, 217, 255, 0.55);
+  }
+
+  .chip {
+    @apply rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold
+      uppercase tracking-wider text-white/70;
+  }
+
+  .heading {
+    @apply font-display font-extrabold uppercase tracking-tight;
+  }
+
+  .label {
+    @apply text-[11px] font-bold uppercase tracking-[0.22em] text-white/45;
+  }
+
+  /* Scrollbars, styled to match the dark UI. */
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 217, 255, 0.35) transparent;
+  }
+
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: rgba(0, 217, 255, 0.28);
+    border-radius: 99px;
+  }
+
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 217, 255, 0.5);
+  }
+
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Animated grid backdrop used behind the menus. */
+.grid-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 217, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 217, 255, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 75%);
+  pointer-events: none;
+}
+
+.text-glow {
+  text-shadow: 0 0 28px rgba(0, 217, 255, 0.55);
+}
+
+.text-glow-gold {
+  text-shadow: 0 0 28px rgba(255, 215, 0, 0.5);
+}
+
+/* Drag-and-drop affordances in the squad builder. */
+.slot-drop-active {
+  box-shadow:
+    0 0 0 2px rgba(0, 217, 255, 0.9),
+    0 0 26px rgba(0, 217, 255, 0.55);
+  transform: scale(1.07);
+}
+
+.card-hover {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 12px 30px -12px rgba(0, 217, 255, 0.5);
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00d9ff, #00b4d8);
+  box-shadow: 0 0 14px rgba(0, 217, 255, 0.75);
+  cursor: pointer;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00d9ff, #00b4d8);
+  box-shadow: 0 0 14px rgba(0, 217, 255, 0.75);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
