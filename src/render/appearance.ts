@@ -32,7 +32,12 @@ export interface Appearance {
   buildScale: number;
 }
 
-const SKIN: [string, string][] = [
+/**
+ * Skin tones, each as a [lit, shaded] pair. Shared with the crowd — see
+ * `spectators.ts` — so a spectator and a player standing under the same
+ * floodlight are drawn from the same range of people.
+ */
+export const SKIN_TONES: [string, string][] = [
   ['#F2D3BC', '#D9AE93'],
   ['#EBC3A3', '#CE9C79'],
   ['#D9A87C', '#B98456'],
@@ -43,7 +48,7 @@ const SKIN: [string, string][] = [
   ['#4E2C18', '#361C0E'],
 ];
 
-const HAIR_COLORS = ['#12100F', '#1C1512', '#2B1B12', '#3D2415', '#5B3A1E', '#8A5A2B', '#C8A050', '#E8D9A8', '#A33B14'];
+export const HAIR_COLORS = ['#12100F', '#1C1512', '#2B1B12', '#3D2415', '#5B3A1E', '#8A5A2B', '#C8A050', '#E8D9A8', '#A33B14'];
 const HAIR_STYLES: HairStyle[] = ['short', 'buzz', 'fade', 'curly', 'afro', 'long', 'topknot', 'short', 'fade', 'short'];
 const BOOTS = ['#F2F4F7', '#14161A', '#D9F24A', '#FF3B6B', '#2E7DFF', '#FF8A1E', '#00E0B8', '#B026FF', '#FFD400'];
 
@@ -71,7 +76,7 @@ export function appearanceFor(p: MatchPlayer, weather: Weather): Appearance {
   const pick = (shift: number, n: number) => ((h >>> shift) & 0xff) % n;
   const frac = (shift: number) => (((h >>> shift) & 0xff) / 255);
 
-  const [skin, skinDark] = SKIN[pick(0, SKIN.length)];
+  const [skin, skinDark] = SKIN_TONES[pick(0, SKIN_TONES.length)];
   const age = p.source.age;
 
   // Older players lose hair and grey a little more often — a small thing that

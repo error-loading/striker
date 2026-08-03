@@ -47,6 +47,7 @@ export class MatchRenderer {
       atmosphere: this.atmos,
       homeColor: engine.home.team.primaryColor,
       awayColor: engine.away.team.secondaryColor,
+      weather: engine.settings.weather,
     });
     this.buildKits();
   }
@@ -105,10 +106,16 @@ export class MatchRenderer {
     // the sky stays put in the world while the camera tracks the ball.
     drawSky(ctx, w, h, this.night, e.settings.weather, this.time, this.camera.position.x / PITCH.length);
 
-    // Excitement drives crowd animation: momentum toward either goal, plus a
-    // spike right after a goal is scored.
-    const excitement = Math.min(1, Math.abs(e.momentum) * 0.7 + (e.phase === 'goal' ? 1 : 0));
-    this.scene.draw(ctx, this.camera, this.time, excitement);
+    // What the crowd has to react to. Momentum is the baseline hum; a goal is
+    // a spike that decays over the celebration, and carries which end scored
+    // so only those supporters get out of their seats.
+    const celebration =
+      e.phase === 'goal' ? Math.min(1, e.restartTimer / (TIMING.goalCelebration * 0.55)) : 0;
+    this.scene.draw(ctx, this.camera, this.time, {
+      excitement: Math.min(1, Math.abs(e.momentum) * 0.7 + celebration),
+      celebration,
+      scoringSide: celebration > 0 ? e.lastGoalSide : null,
+    });
 
     const theme = pitchTheme(this.night, e.settings.weather);
     // The surround follows the stadium's rounded ring, so it has to come from

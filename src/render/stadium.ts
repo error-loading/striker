@@ -1,9 +1,21 @@
-import type { Stadium } from '../data/types';
+import type { Stadium, Weather } from '../data/types';
 import { PITCH } from '../engine/constants';
 import { Rng } from '../engine/math';
-import { fog, fogged, litFace, type Atmosphere } from './atmosphere';
+import { fogged, litFace, type Atmosphere } from './atmosphere';
 import type { Camera } from './camera';
 import { fillWorldPoly, mixHex, shade } from './draw';
+import {
+  buildLookPool,
+  drawSpectator,
+  flushMarks,
+  hazedPool,
+  type CrowdFrame,
+  type CrowdMood,
+  type LookPool,
+  type Spectator,
+} from './spectators';
+
+export type { CrowdMood } from './spectators';
 
 const L = PITCH.length;
 const W = PITCH.width;
@@ -96,15 +108,17 @@ const BLOCK = 6;
  */
 const MAST_H = 23;
 
-interface CrowdDot {
-  x: number;
-  y: number;
-  z: number;
-  color: string;
-  phase: number;
-  /** 0 = always drawn, higher ranks drop out first as the block recedes. */
-  rank: number;
-}
+/**
+ * Milliseconds of a frame the bowl is allowed — stands, roof, boards and the
+ * crowd that fills them.
+ *
+ * Set above what a full-detail bowl costs on a desktop, not at it. A ceiling
+ * the reference machine sits exactly on is worse than useless: the servo would
+ * hunt across it every second or so and the whole crowd would visibly pulse
+ * between detail tiers. Comfortably clear of it, a machine that can afford
+ * everything simply keeps everything, and only a slower one starts trading.
+ */
+const BOWL_MS_BUDGET = 8;
 
 interface Flag {
   x: number;
@@ -126,10 +140,19 @@ interface Block {
   cx: number;
   cy: number;
   cz: number;
-  crowd: CrowdDot[];
+  crowd: Spectator[];
+  /** The block's own cast of spectators, lit for its facing. */
+  pool: LookPool;
   flags: Flag[];
   /** Supporter tint for this section: home end, away end, or neutral. */
   tint: string;
+  /** -1 for the home end, 1 for the away end, 0 for a neutral stand. */
+  endness: -1 | 0 | 1;
+  /** Position round the bowl, 0..1. Reactions travel along it as a wave. */
+  ringPhase: number;
+  /** Direction this block's spectators face — inward, toward the pitch. */
+  fx: number;
+  fy: number;
   /** True where a stairway splits the seating. */
   vomitory: boolean;
   /** Per-frame scratch. */
@@ -141,6 +164,8 @@ export interface StadiumOptions {
   /** Kit colours of the two sides, used to tint the supporter ends. */
   homeColor: string;
   awayColor: string;
+  /** Drives hats, coats and scarves through the crowd. */
+  weather: Weather;
 }
 
 /**
@@ -231,6 +256,8 @@ export class StadiumScene {
   private concrete: string;
   /** Adaptive crowd budget — raised or lowered to hold the frame time. */
   private crowdBudget = 1;
+  /** Smoothed cost of the whole bowl pass, in milliseconds. */
+  private bowlMs = 0;
 
   constructor(stadium: Stadium, night: boolean, opts: StadiumOptions) {
     this.stadium = stadium;
@@ -304,8 +331,24 @@ export class StadiumScene {
         cy: 0,
         cz: 0,
         crowd: [],
+        // Each block's cast is lit for the way that block faces, once, at
+        // build time — which is what lets the crowd loop run without touching
+        // a colour.
+        pool: buildLookPool(rng, {
+          atmosphere: this.atmos,
+          night: this.night,
+          weather: opts.weather,
+          tint,
+          seat: this.stadium.seatColor,
+          nx: mid.nx,
+          ny: mid.ny,
+        }),
         flags: [],
         tint,
+        endness,
+        ringPhase: b / nBlocks,
+        fx: -mid.nx,
+        fy: -mid.ny,
         vomitory: b % 3 === 1,
         depth: 0,
       };
@@ -315,45 +358,33 @@ export class StadiumScene {
       block.cy = c[1];
       block.cz = c[2];
 
-      this.fillCrowd(block, rng, tint);
+      this.fillCrowd(block, rng);
       this.addFlags(block, rng, tint, opts);
       this.blocks.push(block);
     }
   }
 
-  /** A palette of clothing tones, weighted toward the section's colours. */
-  private palette(tint: string): string[] {
-    const base = this.stadium.seatColor;
-    const alt = this.stadium.seatColorAlt;
-    const skin = ['#E8D5C0', '#C89B7B', '#8A5A3B', '#6B4429'];
-    const clothes = ['#F2F2F2', '#1E1E24', '#3A4C6B', '#5A5F6B', '#2B2F3A', '#D8DDE4'];
-    if (!tint) return [base, alt, shade(base, 0.2), shade(alt, -0.12), ...skin, ...clothes, ...clothes];
-    // Supporter ends: mostly the club colour, with enough variation to avoid a
-    // flat block of one hue.
-    return [
-      tint,
-      tint,
-      tint,
-      shade(tint, 0.22),
-      shade(tint, -0.22),
-      mixHex(tint, '#FFFFFF', 0.4),
-      base,
-      ...skin,
-      ...clothes.slice(0, 3),
-    ];
-  }
-
-  private fillCrowd(block: Block, rng: Rng, tint: string) {
-    const palette = this.palette(tint);
+  /**
+   * Seat the crowd.
+   *
+   * Tiers and rows are walked from the back of the stand forward, because that
+   * is the order they have to be painted in. Every camera in the game sits
+   * inside the bowl, so the back row of any stand it can see is the far one:
+   * laying it down first lets the row in front overlap it, which is what gives
+   * a stand its stacked depth instead of a field of floating figures. With flat
+   * dots the order never mattered; with bodies it is the difference between a
+   * terrace and a spreadsheet.
+   */
+  private fillCrowd(block: Block, rng: Rng) {
     const segs = block.samples.length - 1;
     const maxTiers = Math.max(...block.samples.map((s) => s.tiers.length));
 
-    for (let t = 0; t < maxTiers; t++) {
+    for (let t = maxTiers - 1; t >= 0; t--) {
       const rows = t === 0 ? 15 : 14;
       // A block of empty seats here and there — no ground is ever full.
       const emptiness = 0.05 + rng.next() * 0.06;
 
-      for (let r = 0; r < rows; r++) {
+      for (let r = rows - 1; r >= 0; r--) {
         const rv = (r + 0.5) / rows;
 
         for (let s = 0; s < segs; s++) {
@@ -380,11 +411,19 @@ export class StadiumScene {
             const z0 = ta.z0 + (tb.z0 - ta.z0) * u;
             const z1 = ta.z1 + (tb.z1 - ta.z1) * u;
             const o = d0 + 0.7 + (d1 - d0 - 1.2) * rv + rng.range(-0.22, 0.22);
+            // Nobody sits perfectly square to the pitch. A few degrees of
+            // per-seat yaw is what keeps a row from reading as a picket fence.
+            const yaw = rng.range(-0.28, 0.28);
+            const cy = Math.cos(yaw);
+            const sy = Math.sin(yaw);
             block.crowd.push({
               x: bx + (nx / nl) * o,
               y: by + (ny / nl) * o,
-              z: z0 + (z1 - z0) * rv + 0.75 + rng.range(-0.12, 0.12),
-              color: palette[Math.floor(rng.next() * palette.length)],
+              // The seat, so the figure is built upward from its own hips.
+              z: z0 + (z1 - z0) * rv + 0.62 + rng.range(-0.1, 0.1),
+              fx: (-nx / nl) * cy - (-ny / nl) * sy,
+              fy: (-nx / nl) * sy + (-ny / nl) * cy,
+              look: Math.floor(rng.next() * block.pool.base.length),
               phase: rng.next() * Math.PI * 2,
               // Rank spreads evenly so thinning stays uniform, never patchy.
               rank: (r * 7 + c * 3) % 4,
@@ -421,8 +460,8 @@ export class StadiumScene {
   }
 
   /**
-   * Draw the bowl. `excitement` (0..1) drives crowd shimmer, so the stands come
-   * alive when the match does.
+   * Draw the bowl. `mood` drives the crowd, so the stands come alive when the
+   * match does — and only the right end of them does when a goal goes in.
    *
    * The whole ring goes down before the pitch. Strictly the near stand is
    * between the lens and the turf and ought to be painted after it, but the
@@ -432,7 +471,7 @@ export class StadiumScene {
    * and closer to what a real broadcast shot contains, which is no sight of the
    * gantry's own stand at all.
    */
-  draw(ctx: CanvasRenderingContext2D, cam: Camera, time: number, excitement: number) {
+  draw(ctx: CanvasRenderingContext2D, cam: Camera, time: number, mood: CrowdMood) {
     // Painter's algorithm over the whole ring: furthest block first, so the far
     // side of the bowl is laid down before the near side crosses in front.
     const visible: Block[] = [];
@@ -452,22 +491,58 @@ export class StadiumScene {
     // occluded by them; only the heads and their glow sit above the roofline.
     this.drawFloodlightMasts(ctx, cam);
 
-    const drawn = { dots: 0 };
+    // Round joints on every capsule the crowd draws, set once rather than
+    // twenty thousand times.
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    /**
+     * One timestamp pair for the whole bowl, not one per block.
+     *
+     * `performance.now()` is coarsened to about 100 microseconds unless the
+     * page is cross-origin isolated, which this one is not. A block takes a
+     * couple of hundred microseconds, so timing each of them separately reads
+     * mostly quantisation noise — and on a browser that clamps to a full
+     * millisecond it would read zero, and the safety valve would never fire on
+     * the machines that need it most. The whole pass is milliseconds, so one
+     * measurement is comfortably above the clock's resolution.
+     *
+     * It includes the structure, roof and boards, which are not adaptive. That
+     * is deliberate: they are a small and roughly fixed cost, and the crowd is
+     * the only thing here that can give anything back, so it is the crowd that
+     * should yield when the bowl as a whole is too expensive.
+     */
+    const t0 = performance.now();
     for (const b of visible) {
       this.drawBlockStructure(ctx, cam, b);
-      this.drawBlockCrowd(ctx, cam, b, time, excitement, drawn);
+      this.drawBlockCrowd(ctx, cam, b, time, mood);
       this.drawBlockFlags(ctx, cam, b, time);
       this.drawBlockRoof(ctx, cam, b);
       this.drawBlockBoards(ctx, cam, b, time);
     }
+    const bowlMs = performance.now() - t0;
 
-    // Hold the crowd near a fixed budget so a wide camera on a big ground costs
-    // the same as a tight one.
-    const target = 9000;
-    if (drawn.dots > target * 1.15) this.crowdBudget = Math.max(0.35, this.crowdBudget - 0.06);
-    else if (drawn.dots < target * 0.8) this.crowdBudget = Math.min(1, this.crowdBudget + 0.04);
+    /**
+     * Hold the crowd to a slice of the frame, measured rather than estimated.
+     *
+     * An earlier version counted units of work — so many for a mark, more for
+     * an articulated figure — and compared that against a constant tuned on one
+     * machine. That constant is a guess about hardware, and it is wrong on any
+     * machine that is not the one it was tuned on. Timing the pass instead
+     * means the crowd gives back exactly as much detail as the machine it is
+     * actually running on cannot afford, and no more.
+     *
+     * Smoothed, because a single slow frame is usually something else entirely
+     * — a GC pause, the tab losing focus — and should not strip a stand. The
+     * band either side is narrow enough that detail given up after a hiccup is
+     * handed back within a second or so; an earlier, wider one let a spike
+     * during warm-up park the crowd at half detail for the rest of the match.
+     */
+    this.bowlMs += (bowlMs - this.bowlMs) * 0.12;
+    if (this.bowlMs > BOWL_MS_BUDGET * 1.08) this.crowdBudget = Math.max(0.3, this.crowdBudget - 0.05);
+    else if (this.bowlMs < BOWL_MS_BUDGET * 0.92) this.crowdBudget = Math.min(1, this.crowdBudget + 0.03);
 
-    if (this.night) this.drawCameraFlashes(ctx, cam, visible, time, excitement);
+    if (this.night) this.drawCameraFlashes(ctx, cam, visible, time, mood.excitement);
     this.drawFloodlights(ctx, cam, time);
   }
 
@@ -613,53 +688,88 @@ export class StadiumScene {
     }
   }
 
+  /**
+   * One block's spectators.
+   *
+   * Two knobs decide what a block costs. Thinning drops whole ranks of seats as
+   * the block recedes, which is what keeps the far upper tier from costing what
+   * the front row does. Detail decides how much figure each surviving seat
+   * gets, and is clamped by the adaptive budget so a camera that suddenly fills
+   * the frame with the near stand degrades everyone a level rather than
+   * dropping the frame.
+   */
   private drawBlockCrowd(
     ctx: CanvasRenderingContext2D,
     cam: Camera,
     block: Block,
     time: number,
-    excitement: number,
-    drawn: { dots: number },
+    mood: CrowdMood,
   ) {
     const a = this.atmos;
-    const w = cam.width;
-    const h = cam.height;
-    const amp = 0.1 + excitement * 0.42;
-    const dim = this.night ? -0.28 : 0;
+    const centre = cam.project(block.cx, block.cy, block.cz);
+    const px = centre.scale;
+    if (px < 1.2) return;
 
-    // Level of detail: distant blocks are thinned, because at that size the
-    // difference between 900 dots and 300 is invisible but not free.
-    const scaleAt = cam.project(block.cx, block.cy, block.cz).scale;
-    const dotSize = scaleAt * 0.34;
     let maxRank = 3;
-    if (dotSize < 1.15) maxRank = 2;
-    if (dotSize < 0.85) maxRank = 1;
-    if (dotSize < 0.6) maxRank = 0;
+    if (px < 3.4) maxRank = 2;
+    if (px < 2.5) maxRank = 1;
+    if (px < 1.8) maxRank = 0;
     maxRank = Math.min(maxRank, Math.round(3 * this.crowdBudget));
-    if (dotSize < 0.34) return;
 
-    const hazeAt = fog(a, cam.project(block.cx, block.cy, block.cz).d);
-    const haze = hazeAt > 0.004;
-
-    for (const dot of block.crowd) {
-      if (dot.rank > maxRank) continue;
-      // Excited crowds stand up; the sway is per-seat so rows ripple.
-      const bob = Math.sin(time * 3.4 + dot.phase) * amp;
-      const p = cam.project(dot.x, dot.y, dot.z + bob * 0.22);
-      if (!p.visible) continue;
-      if (p.x < -12 || p.x > w + 12 || p.y < -12 || p.y > h + 12) continue;
-      // Capped: the gantry camera clips the front rows of its own stand, and a
-      // seat a few metres from the lens would otherwise scale up into a slab
-      // the size of a player.
-      const size = Math.min(p.scale * 0.34, 7);
-      if (size < 0.42) continue;
-      let color = dim ? shade(dot.color, dim) : dot.color;
-      if (haze) color = fogged(color, a, p.d);
-      ctx.fillStyle = color;
-      // Slightly taller than wide: a head and shoulders, not a square pixel.
-      ctx.fillRect(p.x - size * 0.5, p.y - size * 0.7, Math.max(0.7, size), Math.max(0.9, size * 1.5));
-      drawn.dots++;
+    /**
+     * How much this section has to shout about. Both ends follow the run of
+     * play, but a goal splits them: the scorers' end erupts and the other end
+     * goes quiet and sits down, which is the single most legible thing a crowd
+     * does all match.
+     */
+    const scoringEnd = mood.scoringSide === 0 ? -1 : mood.scoringSide === 1 ? 1 : 0;
+    let drive = mood.excitement * 0.72;
+    if (mood.celebration > 0.01 && scoringEnd !== 0) {
+      const ours = block.endness === scoringEnd;
+      const theirs = block.endness === -scoringEnd;
+      drive += mood.celebration * (ours ? 1.1 : theirs ? -0.55 : 0.45);
     }
+    drive = Math.max(-0.4, Math.min(1.15, drive));
+
+    // Are these fans turned toward the lens? Everyone in a block faces the
+    // pitch, so one test for the block answers it for all of them.
+    const camPos = cam.position;
+    const faceOn = block.fx * (camPos.x - block.cx) + block.fy * (camPos.y - block.cy) > 0;
+
+    // The block's screen frame, measured once and lent to every seat in it.
+    const cUp = cam.project(block.cx, block.cy, block.cz + 0.5);
+    const cLat = cam.project(block.cx - block.fy * 0.5, block.cy + block.fx * 0.5, block.cz);
+
+    const sunLen = Math.hypot(a.sun.x, a.sun.y) || 1;
+    const rimPx = Math.max(0.3, px * 0.03);
+    const frame: CrowdFrame = {
+      time,
+      drive,
+      ringPhase: block.ringPhase * Math.PI * 2,
+      night: this.night,
+      faceOn,
+      rimX: (-a.sun.x / sunLen) * rimPx,
+      rimY: (-a.sun.y / sunLen) * rimPx * 0.5,
+      /**
+       * The budget caps detail a level at a time when a camera fills the frame
+       * with stand. It bites later than the rank thinning above deliberately:
+       * dropping seats is smooth, dropping a detail tier is a visible step
+       * across the whole crowd, so it is the second thing tried, not the first.
+       */
+      maxDetail: this.crowdBudget > 0.7 ? 3 : this.crowdBudget > 0.45 ? 2 : 1,
+      baseUx: (cUp.x - centre.x) * 2,
+      baseUy: (cUp.y - centre.y) * 2,
+      baseLx: (cLat.x - centre.x) * 2,
+      baseLy: (cLat.y - centre.y) * 2,
+      basePx: px,
+      baseOk: cUp.visible && cLat.visible,
+    };
+    const looks = hazedPool(block.pool, a, centre.d);
+    for (const s of block.crowd) {
+      if (s.rank > maxRank) continue;
+      drawSpectator(ctx, cam, s, block.pool, looks, a, frame);
+    }
+    flushMarks(ctx, looks, block.pool, frame);
   }
 
   private drawBlockFlags(ctx: CanvasRenderingContext2D, cam: Camera, block: Block, time: number) {

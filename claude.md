@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Build with `npm run build` (0 errors, 103 kB gzipped).
+Open http://localhost:5173. Build with `npm run build` (0 errors, 121 kB gzipped).
 
 ## Architecture
 
@@ -28,6 +28,7 @@ Open http://localhost:5173. Build with `npm run build` (0 errors, 103 kB gzipped
 | `src/render/atmosphere.ts` | Depth haze, key light direction, shading and shadow offsets |
 | `src/render/entities.ts` | Articulated player figure, gait cycle, ball, name plates |
 | `src/render/appearance.ts` | Per-player skin, hair, facial hair and boots, derived from id |
+| `src/render/spectators.ts` | Articulated spectator figure, look pools, crowd LOD and reactions |
 | `src/render/renderer.ts` | Orchestrates all render passes (pitch, stadium, entities, weather) |
 | `src/render/pitch.ts` | Grass, wear, markings, corner flags, 3D goal net, lighting grade |
 | `src/render/stadium.ts` | 23 procedural stadiums: rounded bowl, tiered crowd, roof, floodlights |
@@ -63,6 +64,17 @@ http://localhost:5173/preview.html?rig=1&cols=4&rows=2&mag=4
 ```
 
 `mag` scales the canvas transform rather than moving the camera, so stroke widths blow up with the figure and what you inspect is exactly what a match camera draws. Note the players are ~28 css pixels tall in play, so anything that only reads at `mag=4` is not worth the instructions to draw it.
+
+### Work on the Crowd
+`?crowd=1` draws the bowl from a real match camera and magnifies it about a point in the stands, so spectators can be judged at a size no camera gives you.
+
+```
+http://localhost:5173/preview.html?crowd=1&camera=Sideline&mag=7&drive=0.95&focus=52,76,10
+```
+
+`focus` is a world-space `x,y,z` in metres; the notional ball is parked level with it so the match camera actually looks that way. `drive` fakes the mood — above 0.75 it is treated as a goal for the home end, which is how you check that one end erupts while the other sits down without waiting for a goal.
+
+Same caveat as the player rig, and it bites harder here: **magnification does not change the level of detail**. LOD is chosen from the real projected scale, so what you see blown up is the figure the game actually draws. `spectators.ts` documents where each tier cuts in, and no shipped camera reaches better than about 10 px/m — the gantry looks *over* its own stand, so the nearest crowd in any frame is the far touchline.
 
 ### Change the Camera Framing
 `MODES` in `src/render/camera.ts`. The two touchline modes are built by `gantry(elevation, distance, track)`:
@@ -111,6 +123,14 @@ window.__engine.players.forEach(p => {
 
 **Appearance Is Derived, Not Authored** — skin tone, hair, facial hair and boot colour all come from a hash of the player id, so a squad reads as people without a byte of per-player data. Skin tone is deliberately *not* keyed off nationality: inferring appearance from the country on a passport would be wrong about a great many real footballers.
 
+**The Crowd Is Made of People** — every seat holds a figure posed the same way a player is, not a coloured rectangle. It is built on three compromises, all of them load-bearing. A spectator projects *four* points — the seat, and a metre up, left and forward of it — and derives every joint as an affine combination of those, because across a body 0.9 m tall and 100 m away the perspective divide is constant to well under a pixel; a player projects all fourteen joints, which is worth it at 28 pixels tall and twenty-two of them, and ruinous at twenty-five thousand. Looks are pooled per block rather than per seat, with the block's lighting already baked into every colour string, so the draw loop does no colour arithmetic at all. And aerial perspective is resolved per block at a quantised depth and cached, not per spectator.
+
+**A Stand Is Painted Back to Front** — `fillCrowd` walks tiers and rows in reverse, so the back row is seated first and the row in front overlaps it. Every camera in the game is inside the bowl, so the back row of any visible stand is the far one. With flat dots the order never mattered; with bodies it is the difference between a terrace and a spreadsheet. The same reasoning is why spectators have no legs — the camera always looks down into the stand, so a seated fan's thighs are behind the row in front of them.
+
+**Most of a Crowd Is Batching, Not Geometry** — a distant spectator is two rectangles, and drawing it cost far more than that: assigning `fillStyle` re-parses a colour string and every `fill()` is a draw call. Because looks are pooled, a block only holds 96 distinct colours, so the two cheap tiers bucket by look and emit one path and one draw call each. That alone took the crowd from 9.6 ms a frame to 7.3. Two traps worth knowing: `rect()` starts a new subpath but `ellipse()` and `arc()` do **not**, so a batch of heads needs an explicit `moveTo` before each one or it fills as a fan of huge triangles; and bucketing reorders figures within a block, which is only safe because these tiers are marks a few pixels across.
+
+**The Crowd Budget Is Measured, Not Estimated** — `draw` times the crowd pass and thins until it fits `CROWD_MS_BUDGET`. An earlier version counted units of work against a constant, which is really a guess about hardware and is wrong on any machine but the one it was tuned on. When the budget binds it thins ranks of seats first and drops a detail tier second: losing seats is smooth, losing a tier is a step change across the whole stand.
+
 **One Continuous Bowl** — the stadium is a rounded-rectangle ring, not four separate stands. Every seat, wall, roof panel and advertising board is placed by walking that ring, which is what closes the corners. The ring also carries a height profile: the stand opposite the camera steps down to two tiers, so a band of sky and the floodlight rigs sit above the roofline instead of the frame being wall-to-wall seating.
 
 **Aerial Perspective** — `atmosphere.ts` blends every stadium surface toward a haze colour by camera depth. Without it the far stand reads as a flat sticker at the top of the frame; with it the bowl has depth. It also owns the key light, so stand shading, player shadows and the ball's shadow all agree on where the light is.
@@ -154,9 +174,9 @@ Should show monotonic increase in opponent goals as difficulty rises.
 ## Performance Notes
 
 - **Canvas rendering**: ~60 fps on desktop (single-threaded, no workers).
-- **Crowd**: ~500 dots per frame at full zoom (thinned via RNG in `buildCrowd`).
+- **Crowd**: ~5,000 figures a frame on the broadcast camera, across four levels of detail. Held to `CROWD_MS_BUDGET` (5 ms) by timing the pass and thinning until it fits, so it costs the same share of a frame on any machine. Roughly 5 ms of a 7.3 ms frame on the reference desktop.
 - **Players**: 22 agents, each running steering, stamina, decision latency, AI target evaluation. ~1–2 ms per frame step.
-- **Bundle**: 103 kB gzipped. No external libraries except React/Zustand.
+- **Bundle**: 121 kB gzipped. No external libraries except React/Zustand.
 
 ## Git Workflow
 
