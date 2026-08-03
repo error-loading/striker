@@ -423,6 +423,14 @@ export class StadiumScene {
   /**
    * Draw the bowl. `excitement` (0..1) drives crowd shimmer, so the stands come
    * alive when the match does.
+   *
+   * The whole ring goes down before the pitch. Strictly the near stand is
+   * between the lens and the turf and ought to be painted after it, but the
+   * camera is mounted *in* that stand: the only parts of it in front of the
+   * camera are a few rows directly below, which project as a wall of enormous
+   * nearby seats. Letting the playing surround paint over them is both cheaper
+   * and closer to what a real broadcast shot contains, which is no sight of the
+   * gantry's own stand at all.
    */
   draw(ctx: CanvasRenderingContext2D, cam: Camera, time: number, excitement: number) {
     // Painter's algorithm over the whole ring: furthest block first, so the far
@@ -640,7 +648,10 @@ export class StadiumScene {
       const p = cam.project(dot.x, dot.y, dot.z + bob * 0.22);
       if (!p.visible) continue;
       if (p.x < -12 || p.x > w + 12 || p.y < -12 || p.y > h + 12) continue;
-      const size = p.scale * 0.34;
+      // Capped: the gantry camera clips the front rows of its own stand, and a
+      // seat a few metres from the lens would otherwise scale up into a slab
+      // the size of a player.
+      const size = Math.min(p.scale * 0.34, 7);
       if (size < 0.42) continue;
       let color = dim ? shade(dot.color, dim) : dot.color;
       if (haze) color = fogged(color, a, p.d);

@@ -26,6 +26,8 @@ Open http://localhost:5173. Build with `npm run build` (0 errors, 103 kB gzipped
 | `src/engine/math.ts` | Vec2 ops, xorshift32 PRNG, Bates-distribution gaussian |
 | `src/render/camera.ts` | Pinhole perspective camera, 5 modes, near-plane clipping, culling |
 | `src/render/atmosphere.ts` | Depth haze, key light direction, shading and shadow offsets |
+| `src/render/entities.ts` | Articulated player figure, gait cycle, ball, name plates |
+| `src/render/appearance.ts` | Per-player skin, hair, facial hair and boots, derived from id |
 | `src/render/renderer.ts` | Orchestrates all render passes (pitch, stadium, entities, weather) |
 | `src/render/pitch.ts` | Grass, wear, markings, corner flags, 3D goal net, lighting grade |
 | `src/render/stadium.ts` | 23 procedural stadiums: rounded bowl, tiered crowd, roof, floodlights |
@@ -52,6 +54,15 @@ http://localhost:5173/preview.html?camera=Broadcast&time=Night&weather=Foggy&sta
 ```
 
 `&pause=1` freezes the sim for reproducible screenshots, `&warmup=N` fast-forwards N seconds first. `window.__bench()` in the console times `renderer.draw()` synchronously — real frame timing is useless in a backgrounded pane because `requestAnimationFrame` throttles to ~1 fps.
+
+### Work on the Player Figure
+`?rig=1` swaps the match for a model sheet: rows are gait states (idle → walk → run → sprint → celebrating and exhausted), columns turn the player 45° at a time so you can check every heading at once.
+
+```
+http://localhost:5173/preview.html?rig=1&cols=4&rows=2&mag=4
+```
+
+`mag` scales the canvas transform rather than moving the camera, so stroke widths blow up with the figure and what you inspect is exactly what a match camera draws. Note the players are ~28 css pixels tall in play, so anything that only reads at `mag=4` is not worth the instructions to draw it.
 
 ### Change the Camera Framing
 `MODES` in `src/render/camera.ts`. The two touchline modes are built by `gantry(elevation, distance, track)`:
@@ -91,6 +102,14 @@ window.__engine.players.forEach(p => {
 **Fixed Timestep** — the engine runs at exactly 1/60 second steps, decoupled from render frame rate. This lets a slow frame not cascade into a frame skip; the sim just catches up over the next few presents.
 
 **Formation-Relative AI** — agents anchor to their slot in the formation and move that anchor with possession. The anchor slides toward/away from the ball and the own goal, compressing in defense, spreading in attack.
+
+**Players Are Posed in World Space** — `buildPose` places hips, knees, ankles, shoulders, elbows, hands, neck and head in metres around the player's own facing, and every joint is projected through the same camera as the pitch. That is what makes a figure turn, foreshorten and sit correctly at any camera angle for free. The surfaces are then drawn as screen-space capsules between the projected joints, which at 28 pixels tall is indistinguishable from shaded geometry and costs a fraction as much.
+
+**The Chest Needs Depth** — the torso is a capsule *and* a shoulder-to-hip quad. The quad alone gives a broad chest face-on but collapses to a line in profile, because two shoulder points are all it has; the capsule supplies the front-to-back thickness that keeps a silhouette in every heading. Same reason the head is an ellipse rather than a polygon.
+
+**Rim Light by Double-Draw** — each body part is drawn twice, once offset toward the key light in a brighter tint and once in its own colour on top, so the bright copy survives only along one edge. Stroking an outline instead puts a halo around the whole figure, which reads as a helmet.
+
+**Appearance Is Derived, Not Authored** — skin tone, hair, facial hair and boot colour all come from a hash of the player id, so a squad reads as people without a byte of per-player data. Skin tone is deliberately *not* keyed off nationality: inferring appearance from the country on a passport would be wrong about a great many real footballers.
 
 **One Continuous Bowl** — the stadium is a rounded-rectangle ring, not four separate stands. Every seat, wall, roof panel and advertising board is placed by walking that ring, which is what closes the corners. The ring also carries a height profile: the stand opposite the camera steps down to two tiers, so a band of sky and the floodlight rigs sit above the roofline instead of the frame being wall-to-wall seating.
 

@@ -194,7 +194,15 @@ export class Camera {
 
     // Focal length is driven by width but clamped by height so very wide or
     // very short viewports still frame the pitch sensibly.
-    this.focal = Math.min(this.width * cfg.fov, this.height * cfg.fov * 1.9);
+    //
+    // The lower bound is what stops a tall or near-square viewport turning into
+    // a fisheye: widen the vertical field far enough and the bottom-of-frame ray
+    // dips below the gantry, so the camera ends up looking down onto the roof of
+    // the very stand it is mounted in. On a normal 16:9 window it never binds.
+    this.focal = Math.max(
+      this.height * 1.25,
+      Math.min(this.width * cfg.fov, this.height * cfg.fov * 1.9),
+    );
     this.cx = this.width / 2;
     this.cy = this.height / 2;
   }

@@ -4,7 +4,15 @@ import type { MatchEngine } from '../engine/engine';
 import { getStadium } from '../data/stadiums';
 import { atmosphereFor, type Atmosphere } from './atmosphere';
 import { Camera } from './camera';
-import { advancePhases, drawBall, drawOffsideLine, drawPlayer, kitFor, type KitColors } from './entities';
+import {
+  advancePhases,
+  drawBall,
+  drawOffsideLine,
+  drawPlayer,
+  drawPlayerLabel,
+  kitFor,
+  type KitColors,
+} from './entities';
 import { drawCornerFlags, drawGoals, drawGrass, drawLighting, drawMarkings, pitchTheme } from './pitch';
 import { StadiumScene } from './stadium';
 import { drawSky, WeatherSystem } from './weather';
@@ -24,6 +32,7 @@ export class MatchRenderer {
   private night: boolean;
   private atmos: Atmosphere;
   private kits: [KitColors[], KitColors[]] = [[], []];
+  private captains = new Set<string>();
   private time = 0;
   private dpr = 1;
 
@@ -48,6 +57,12 @@ export class MatchRenderer {
       const setup = side === 0 ? this.engine.home : this.engine.away;
       const players = this.engine.players.filter((p) => p.side === side);
       this.kits[side] = players.map((p) => kitFor(setup.team, p.isGK, side === 1));
+
+      // The armband goes to the best outfielder on the pitch.
+      const captain = players
+        .filter((p) => !p.isGK)
+        .sort((a, b) => b.overall - a.overall)[0];
+      if (captain) this.captains.add(captain.id);
     }
   }
 
@@ -115,6 +130,7 @@ export class MatchRenderer {
     // Depth-sorted entity pass so nearer players occlude further ones.
     type Item = { d: number; draw: () => void };
     const items: Item[] = [];
+    const labels: { d: number; p: (typeof e.players)[number]; kit: KitColors; controlled: boolean }[] = [];
     const sides: [number, number] = [0, 0];
     for (const p of e.players) {
       if (!p.onPitch) continue;
@@ -129,10 +145,20 @@ export class MatchRenderer {
           drawPlayer(ctx, this.camera, p, kit, {
             controlled,
             night: this.night,
-            showName: opts.showNames || controlled,
             atmos: this.atmos,
+            weather: e.settings.weather,
+            captain: this.captains.has(p.id),
+            time: this.time,
           }),
       });
+
+      // Labels: the player you are controlling always, everyone else only when
+      // asked for or when they are near the ball — 22 name plates at once is
+      // noise, not information.
+      const nearBall = Math.hypot(p.pos.x - e.ball.pos.x, p.pos.y - e.ball.pos.y) < 14;
+      if (controlled || opts.showNames || (nearBall && e.phase === 'play')) {
+        labels.push({ d: proj.d, p, kit, controlled });
+      }
     }
     const bp = this.camera.project(e.ball.pos.x, e.ball.pos.y, 0);
     if (bp.visible) {
@@ -140,6 +166,11 @@ export class MatchRenderer {
     }
     items.sort((a, b) => b.d - a.d);
     for (const it of items) it.draw();
+
+    // Labels go in their own pass, over every figure, so a name plate is never
+    // half-covered by the player standing in front of it.
+    labels.sort((a, b) => b.d - a.d);
+    for (const l of labels) drawPlayerLabel(ctx, this.camera, l.p, l.kit, l.controlled);
 
     drawLighting(ctx, this.camera, this.night, w, h, this.scene.rigPositions());
     this.weather.draw(ctx, w, h, this.night);
