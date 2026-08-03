@@ -1,4 +1,4 @@
-# FIFA 26 — The Beautiful Game Redefined
+# Striker — The Beautiful Game Redefined
 
 A football simulation built with React, TypeScript and Canvas 2D. Pick a club from five
 leagues, drag your XI into shape, choose the opposition and the conditions, then play the
