@@ -79,7 +79,7 @@ export type Weather = 'Clear' | 'Rainy' | 'Snowy' | 'Foggy';
 
 export type TimeOfDay = 'Day' | 'Night';
 
-export type CameraMode = 'Isometric' | 'Broadcast' | 'Behind Ball' | 'End to End' | 'Tactical';
+export type CameraMode = 'Sideline' | 'Broadcast' | 'Behind Ball' | 'End to End' | 'Tactical';
 
 export interface FormationSlot {
   /** Normalised pitch coords for the home side: 0 = own goal line, 1 = opposition goal line. */

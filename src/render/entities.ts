@@ -1,6 +1,7 @@
 import type { Team } from '../data/types';
 import { PITCH } from '../engine/constants';
 import type { Ball, MatchPlayer } from '../engine/types';
+import { shadowOffset, type Atmosphere } from './atmosphere';
 import type { Camera } from './camera';
 import { contrastText, shade, worldLine } from './draw';
 
@@ -49,7 +50,7 @@ export function drawPlayer(
   cam: Camera,
   p: MatchPlayer,
   kit: KitColors,
-  opts: { controlled: boolean; night: boolean; showName: boolean },
+  opts: { controlled: boolean; night: boolean; showName: boolean; atmos: Atmosphere },
 ) {
   const base = cam.project(p.pos.x, p.pos.y, 0);
   const head = cam.project(p.pos.x, p.pos.y, PLAYER_HEIGHT);
@@ -63,13 +64,33 @@ export function drawPlayer(
   const speed = Math.hypot(p.vel.x, p.vel.y);
   const stride = Math.min(1, speed / 7);
 
-  // Ground shadow.
+  // Cast shadow. Thrown away from the key light and stretched along its
+  // direction, so the whole team's shadows agree with the floodlights.
+  const off = shadowOffset(opts.atmos, PLAYER_HEIGHT * 0.55);
+  const tip = cam.project(p.pos.x + off.dx, p.pos.y + off.dy, 0);
   ctx.save();
-  ctx.globalAlpha = opts.night ? 0.45 : 0.3;
+  ctx.globalAlpha = opts.night ? 0.42 : 0.3;
   ctx.fillStyle = '#04121F';
-  ctx.beginPath();
-  ctx.ellipse(base.x, base.y, w * 0.62, w * 0.26, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (tip.visible) {
+    const dx = tip.x - base.x;
+    const dy = tip.y - base.y;
+    const len = Math.hypot(dx, dy);
+    ctx.beginPath();
+    ctx.ellipse(
+      base.x + dx * 0.5,
+      base.y + dy * 0.5,
+      Math.max(w * 0.34, len * 0.5 + w * 0.3),
+      w * 0.24,
+      Math.atan2(dy, dx),
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y, w * 0.62, w * 0.26, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 
   // Selection ring for the player under control.
@@ -165,15 +186,24 @@ export function drawPlayer(
   }
 }
 
-export function drawBall(ctx: CanvasRenderingContext2D, cam: Camera, ball: Ball, night: boolean) {
-  const ground = cam.project(ball.pos.x, ball.pos.y, 0);
+export function drawBall(
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  ball: Ball,
+  night: boolean,
+  atmos: Atmosphere,
+) {
   const p = cam.project(ball.pos.x, ball.pos.y, ball.z + 0.11);
+  // The shadow tracks the light, so a lofted ball's shadow runs ahead of it on
+  // the grass instead of sitting glued underneath.
+  const off = shadowOffset(atmos, ball.z);
+  const ground = cam.project(ball.pos.x + off.dx, ball.pos.y + off.dy, 0);
   if (!p.visible || !ground.visible) return;
 
-  // Shadow shrinks and fades as the ball rises.
+  // Shadow spreads and fades as the ball rises.
   const lift = Math.min(1, ball.z / 6);
   ctx.save();
-  ctx.globalAlpha = (night ? 0.5 : 0.34) * (1 - lift * 0.65);
+  ctx.globalAlpha = (night ? 0.5 : 0.34) * (1 - lift * 0.6);
   ctx.fillStyle = '#04121F';
   ctx.beginPath();
   ctx.ellipse(ground.x, ground.y, ground.scale * 0.14 * (1 + lift), ground.scale * 0.06 * (1 + lift), 0, 0, Math.PI * 2);

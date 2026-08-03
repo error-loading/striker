@@ -3,7 +3,7 @@ import { createAttractMatch } from '../engine/createMatch';
 import { useMatchLoop } from '../hooks/useMatchLoop';
 import type { CameraMode } from '../data/types';
 
-const CAMERA_CYCLE: CameraMode[] = ['Broadcast', 'Isometric', 'Behind Ball', 'End to End'];
+const CAMERA_CYCLE: CameraMode[] = ['Broadcast', 'Sideline', 'Behind Ball', 'End to End'];
 
 /**
  * A live CPU-vs-CPU match rendered behind the menus — the "gameplay highlight

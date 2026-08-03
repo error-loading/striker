@@ -11,7 +11,7 @@ import type { MatchEvent, MatchPhase } from '../engine/types';
 import { useMatchLoop } from '../hooks/useMatchLoop';
 import { useGame } from '../store/gameStore';
 
-const CAMERAS: CameraMode[] = ['Isometric', 'Broadcast', 'Behind Ball', 'End to End', 'Tactical'];
+const CAMERAS: CameraMode[] = ['Sideline', 'Broadcast', 'Behind Ball', 'End to End', 'Tactical'];
 
 interface Hud {
   minute: number;

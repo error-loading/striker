@@ -1,4 +1,66 @@
-import type { Camera } from './camera';
+import type { Camera, ViewPoint } from './camera';
+
+/** Scratch buffers — the polygon path runs once per face, thousands of times a frame. */
+const viewBuf: ViewPoint[] = [];
+const clipBuf: ViewPoint[] = [];
+
+/**
+ * Trace a world-space polygon into the current path, clipped against the near
+ * plane. Returns false if nothing survived, or if the result lands entirely off
+ * screen — the caller can then skip the fill.
+ *
+ * Clipping in view space rather than rejecting faces outright matters once the
+ * camera sits inside the stadium bowl: a stand face with a single vertex behind
+ * the lens still covers most of the frame, and dropping it pops a hole in the
+ * stadium.
+ */
+function traceWorldPoly(
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  pts: [number, number, number?][],
+): boolean {
+  const near = cam.near;
+  viewBuf.length = 0;
+  for (const [x, y, z] of pts) viewBuf.push(cam.view(x, y, z ?? 0));
+
+  // Sutherland–Hodgman against the single plane d >= near.
+  clipBuf.length = 0;
+  for (let i = 0; i < viewBuf.length; i++) {
+    const a = viewBuf[i];
+    const b = viewBuf[(i + 1) % viewBuf.length];
+    const ain = a.d >= near;
+    const bin = b.d >= near;
+    if (ain) clipBuf.push(a);
+    if (ain !== bin) {
+      const t = (near - a.d) / (b.d - a.d);
+      clipBuf.push({
+        lat: a.lat + (b.lat - a.lat) * t,
+        vert: a.vert + (b.vert - a.vert) * t,
+        d: near,
+      });
+    }
+  }
+  if (clipBuf.length < 3) return false;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  ctx.beginPath();
+  for (let i = 0; i < clipBuf.length; i++) {
+    const p = cam.fromView(clipBuf[i]);
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  // Cheap reject: the bowl puts most of its geometry outside the viewport.
+  if (maxX < 0 || minX > cam.width || maxY < 0 || minY > cam.height) return false;
+  return true;
+}
 
 /** Fill a world-space polygon (list of [x, y, z] triples) in screen space. */
 export function fillWorldPoly(
@@ -7,22 +69,26 @@ export function fillWorldPoly(
   pts: [number, number, number?][],
   fill: string | CanvasGradient,
 ) {
-  ctx.beginPath();
-  let started = false;
-  for (const [x, y, z] of pts) {
-    const p = cam.project(x, y, z ?? 0);
-    if (!p.visible) return; // Any vertex behind the camera: skip the whole face.
-    if (!started) {
-      ctx.moveTo(p.x, p.y);
-      started = true;
-    } else {
-      ctx.lineTo(p.x, p.y);
-    }
-  }
-  if (!started) return;
-  ctx.closePath();
+  if (!traceWorldPoly(ctx, cam, pts)) return;
   ctx.fillStyle = fill;
   ctx.fill();
+}
+
+/** Fill and outline a world-space polygon in one pass — used for panel edges. */
+export function fillStrokeWorldPoly(
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  pts: [number, number, number?][],
+  fill: string | CanvasGradient,
+  stroke: string,
+  lineWidth = 1,
+) {
+  if (!traceWorldPoly(ctx, cam, pts)) return;
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
 }
 
 /**

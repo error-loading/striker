@@ -88,6 +88,15 @@ function loadJSON<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * Settings saved before the camera rework name a mode that no longer exists.
+ * Map it onto its replacement rather than leaving the renderer without a mode.
+ */
+function migrateSettings(s: UserSettings): UserSettings {
+  const legacy = s.cameraMode as CameraMode | 'Isometric';
+  return legacy === 'Isometric' ? { ...s, cameraMode: 'Sideline' } : s;
+}
+
 function loadSquads(): SavedSquad[] {
   try {
     const raw = localStorage.getItem(SQUADS_KEY);
@@ -100,7 +109,7 @@ function loadSquads(): SavedSquad[] {
 const DEFAULT_SETTINGS: UserSettings = {
   bindings: DEFAULT_BINDINGS,
   controlScheme: 'Pro',
-  cameraMode: 'Isometric',
+  cameraMode: 'Sideline',
   showPlayerNames: false,
   showOffsideLine: true,
   audioEnabled: true,
@@ -163,7 +172,7 @@ export const useGame = create<GameState>((set, get) => ({
   durationMinutes: 6,
   stadiumId: getTeam('mci').stadiumId,
   savedSquads: loadSquads(),
-  settings: loadJSON<UserSettings>(SETTINGS_KEY, DEFAULT_SETTINGS),
+  settings: migrateSettings(loadJSON<UserSettings>(SETTINGS_KEY, DEFAULT_SETTINGS)),
   engine: null,
 
   setScreen: (screen) => set({ screen }),

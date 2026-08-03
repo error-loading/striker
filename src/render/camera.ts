@@ -21,6 +21,16 @@ interface Vec3 {
   z: number;
 }
 
+/** A world point on the camera's own axes: lateral, vertical, and depth. */
+export interface ViewPoint {
+  lat: number;
+  vert: number;
+  d: number;
+}
+
+/** Near plane, in metres. Nothing closer than this can be drawn. */
+const NEAR = 0.6;
+
 interface ModeConfig {
   /** Focal length as a multiple of viewport width. */
   fov: number;
@@ -35,20 +45,47 @@ interface ModeConfig {
   place: (lookX: number, lookY: number, attackDir: number) => { pos: Vec3; target: Vec3 };
 }
 
+const DEG = Math.PI / 180;
+
+/**
+ * A camera mounted on the near-side gantry, the way a broadcast main camera is
+ * rigged: a fixed elevation above the pitch, a fixed slant range to whatever it
+ * is aiming at, and a pan that tracks the ball.
+ *
+ * `track` is how much of the ball's lateral position the aim point inherits. At
+ * 0 the camera always stares at the middle of the pitch and play on the near
+ * touchline falls out of the bottom of frame; at 1 it follows the ball across
+ * and the pitch appears to slide. Real gantry operators sit in between.
+ */
+function gantry(elevation: number, distance: number, track: number, aimHeight = 1.2) {
+  const el = elevation * DEG;
+  const ground = Math.cos(el) * distance;
+  const height = Math.sin(el) * distance;
+  return (lx: number, ly: number) => {
+    const aimY = W / 2 + (ly - W / 2) * track;
+    return {
+      pos: { x: lx, y: aimY - ground, z: height },
+      target: { x: lx, y: aimY, z: aimHeight },
+    };
+  };
+}
+
 const MODES: Record<CameraMode, ModeConfig> = {
-  // Default: raised touchline camera, angled down at the play.
-  Isometric: {
-    fov: 0.72,
+  // Default gameplay camera: the broadcast gantry, tight enough that players
+  // read as players. Roughly a 27 degree look-down.
+  Sideline: {
+    fov: 0.74,
     lead: 0.5,
     damping: 3.4,
-    place: (lx) => ({ pos: { x: lx, y: -28, z: 20 }, target: { x: lx, y: W / 2, z: 0 } }),
+    place: gantry(24, 80, 0.5),
   },
-  // Higher and further back — the classic televised angle.
+  // The wide televised angle — higher and further back, framing the whole
+  // pitch including both penalty areas when play is central.
   Broadcast: {
-    fov: 0.86,
+    fov: 0.8,
     lead: 0.7,
     damping: 2.6,
-    place: (lx) => ({ pos: { x: lx, y: -38, z: 29 }, target: { x: lx, y: W / 2 + 2, z: 0 } }),
+    place: gantry(31, 92, 0.34),
   },
   // Low camera trailing the ball, looking toward the goal under attack.
   'Behind Ball': {
@@ -56,8 +93,8 @@ const MODES: Record<CameraMode, ModeConfig> = {
     lead: 0.25,
     damping: 4.2,
     place: (lx, ly, dir) => ({
-      pos: { x: lx - dir * 21, y: ly - 4, z: 8.5 },
-      target: { x: lx + dir * 14, y: ly * 0.6 + (W / 2) * 0.4, z: 1.4 },
+      pos: { x: lx - dir * 23, y: ly - 5, z: 10.5 },
+      target: { x: lx + dir * 14, y: ly * 0.6 + (W / 2) * 0.4, z: 1.6 },
     }),
   },
   // Fixed behind the goal being attacked.
@@ -66,19 +103,21 @@ const MODES: Record<CameraMode, ModeConfig> = {
     lead: 0.15,
     damping: 2.4,
     place: (lx, ly, dir) => ({
-      pos: { x: dir > 0 ? L + 26 : -26, y: W / 2, z: 19 },
-      target: { x: lx, y: ly * 0.5 + (W / 2) * 0.5, z: 0 },
+      pos: { x: dir > 0 ? L + 32 : -32, y: W / 2, z: 24 },
+      target: { x: lx, y: ly * 0.5 + (W / 2) * 0.5, z: 1 },
     }),
   },
-  // Near top-down, for reading shape.
+  // Near top-down, for reading shape. `fov` is a focal length, so it has to go
+  // *down* to widen the view — the whole point of this mode is seeing the
+  // block of players, and a long lens shows a handful of them.
   Tactical: {
-    fov: 1.5,
+    fov: 0.6,
     lead: 0.2,
     damping: 3,
     place: (lx) => {
       // Bias toward the centre so the whole shape stays framed.
       const cx = L / 2 + (lx - L / 2) * 0.3;
-      return { pos: { x: cx, y: W / 2 - 34, z: 76 }, target: { x: cx, y: W / 2, z: 0 } };
+      return { pos: { x: cx, y: W / 2 - 40, z: 92 }, target: { x: cx, y: W / 2, z: 0 } };
     },
   },
 };
@@ -100,12 +139,12 @@ function normalize3(v: Vec3): Vec3 {
  * straight and the pitch foreshortens correctly toward the far touchline.
  */
 export class Camera {
-  mode: CameraMode = 'Isometric';
+  mode: CameraMode = 'Sideline';
   width = 1280;
   height = 720;
 
   private pos: Vec3 = { x: L / 2, y: -28, z: 20 };
-  private target: Vec3 = { x: L / 2, y: W / 2, z: 0 };
+  private target: Vec3 = { x: L / 2, y: W / 2, z: 1.2 };
   private fwd: Vec3 = { x: 0, y: 1, z: 0 };
   private right: Vec3 = { x: 1, y: 0, z: 0 };
   private up: Vec3 = { x: 0, y: 0, z: 1 };
@@ -171,11 +210,37 @@ export class Camera {
     const ry = y - this.pos.y;
     const rz = z - this.pos.z;
     const d = rx * this.fwd.x + ry * this.fwd.y + rz * this.fwd.z;
-    if (d <= 0.6) return { x: 0, y: 0, d, scale: 0, visible: false };
+    if (d <= NEAR) return { x: 0, y: 0, d, scale: 0, visible: false };
     const lat = rx * this.right.x + ry * this.right.y + rz * this.right.z;
     const vert = rx * this.up.x + ry * this.up.y + rz * this.up.z;
     const s = this.focal / d;
     return { x: this.cx + lat * s, y: this.cy - vert * s, d, scale: s, visible: true };
+  }
+
+  /**
+   * World point resolved onto the camera basis, before the divide by depth.
+   * Polygons are clipped here rather than in screen space, so a face with one
+   * vertex behind the lens is trimmed instead of dropped.
+   */
+  view(x: number, y: number, z: number): ViewPoint {
+    const rx = x - this.pos.x;
+    const ry = y - this.pos.y;
+    const rz = z - this.pos.z;
+    return {
+      lat: rx * this.right.x + ry * this.right.y + rz * this.right.z,
+      vert: rx * this.up.x + ry * this.up.y + rz * this.up.z,
+      d: rx * this.fwd.x + ry * this.fwd.y + rz * this.fwd.z,
+    };
+  }
+
+  /** Screen position of an already-resolved view point. */
+  fromView(v: ViewPoint): { x: number; y: number } {
+    const s = this.focal / Math.max(NEAR, v.d);
+    return { x: this.cx + v.lat * s, y: this.cy - v.vert * s };
+  }
+
+  get near(): number {
+    return NEAR;
   }
 
   /** True if any of the given projected points land inside the viewport. */

@@ -24,10 +24,11 @@ Open http://localhost:5173. Build with `npm run build` (0 errors, 103 kB gzipped
 |------|---------|
 | `src/engine/engine.ts` | 2100-line MatchEngine: physics, AI (22 agents), rules, stats, event log |
 | `src/engine/math.ts` | Vec2 ops, xorshift32 PRNG, Bates-distribution gaussian |
-| `src/render/camera.ts` | Pinhole perspective camera, 5 modes, look-at matrix, culling |
+| `src/render/camera.ts` | Pinhole perspective camera, 5 modes, near-plane clipping, culling |
+| `src/render/atmosphere.ts` | Depth haze, key light direction, shading and shadow offsets |
 | `src/render/renderer.ts` | Orchestrates all render passes (pitch, stadium, entities, weather) |
-| `src/render/pitch.ts` | Markings, corner flags, goal frame with net mesh |
-| `src/render/stadium.ts` | 23 procedural stadiums, crowd with excitement-driven shimmer |
+| `src/render/pitch.ts` | Grass, wear, markings, corner flags, 3D goal net, lighting grade |
+| `src/render/stadium.ts` | 23 procedural stadiums: rounded bowl, tiered crowd, roof, floodlights |
 | `src/data/leagues.ts` | 384 players across 24 clubs, deterministic attribute derivation |
 | `src/store/gameStore.ts` | Zustand state: squads, formations, settings, localStorage persistence |
 
@@ -42,6 +43,21 @@ Outputs stats (goals, shots, possession, etc.) averaged over 8 matches.
 
 ### Add a New Stadium
 Edit `src/data/stadiums.ts`, add a record with `{ id, name, capacity, seatColor, seatColorAlt, roof }`. The `StadiumScene` class procedurally builds stands and a crowd from these values — no assets needed.
+
+### Iterate on the Renderer
+`preview.html` is a dev-only harness that renders a live match full-screen, so you can eyeball the stadium without playing through the menus. Vite only builds `index.html`, so it never ships.
+
+```
+http://localhost:5173/preview.html?camera=Broadcast&time=Night&weather=Foggy&stadium=anfield
+```
+
+`&pause=1` freezes the sim for reproducible screenshots, `&warmup=N` fast-forwards N seconds first. `window.__bench()` in the console times `renderer.draw()` synchronously — real frame timing is useless in a backgrounded pane because `requestAnimationFrame` throttles to ~1 fps.
+
+### Change the Camera Framing
+`MODES` in `src/render/camera.ts`. The two touchline modes are built by `gantry(elevation, distance, track)`:
+- `elevation` — degrees above the pitch. Beyond about 25° the near touchline falls out of the bottom of frame, because the bottom-of-frame ray no longer reaches the ground in front of the camera.
+- `distance` — slant range to the aim point. Drives how big players read; everything else follows from it.
+- `track` — how much of the ball's lateral position the aim point inherits. 0 stares at the middle of the pitch, 1 follows the ball across and makes the pitch appear to slide.
 
 ### Tune Difficulty
 Edit `DIFFICULTY` in `src/engine/constants.ts`. Each tier controls:
@@ -75,6 +91,14 @@ window.__engine.players.forEach(p => {
 **Fixed Timestep** — the engine runs at exactly 1/60 second steps, decoupled from render frame rate. This lets a slow frame not cascade into a frame skip; the sim just catches up over the next few presents.
 
 **Formation-Relative AI** — agents anchor to their slot in the formation and move that anchor with possession. The anchor slides toward/away from the ball and the own goal, compressing in defense, spreading in attack.
+
+**One Continuous Bowl** — the stadium is a rounded-rectangle ring, not four separate stands. Every seat, wall, roof panel and advertising board is placed by walking that ring, which is what closes the corners. The ring also carries a height profile: the stand opposite the camera steps down to two tiers, so a band of sky and the floodlight rigs sit above the roofline instead of the frame being wall-to-wall seating.
+
+**Aerial Perspective** — `atmosphere.ts` blends every stadium surface toward a haze colour by camera depth. Without it the far stand reads as a flat sticker at the top of the frame; with it the bowl has depth. It also owns the key light, so stand shading, player shadows and the ball's shadow all agree on where the light is.
+
+**Painter's Algorithm, Per Block** — the ring is diced into blocks that are depth-sorted and drawn far-to-near. Blocks are culled on their eight corners, not their centre: a stand block is tens of metres wide, and testing only the middle drops blocks whose near edge is still in frame, punching a hole in the bowl.
+
+**Polygons Clip, They Don't Drop** — `fillWorldPoly` clips against the near plane in view space. The camera stands inside the bowl, so faces routinely have one vertex behind the lens; rejecting those faces outright pops holes in the stadium. Note this only works for convex faces — the ground surround is drawn as a triangle fan from the centre spot for exactly this reason, since a single polygon enclosing the camera folds inside out when clipped.
 
 **Offside at Pass Time** — offsideness is judged the moment the ball leaves a player's foot, not when the receiver touches it. This matches the real law and is checked against the second-last defender at that instant.
 

@@ -2,6 +2,7 @@ import type { CameraMode, Stadium } from '../data/types';
 import { PITCH, TIMING } from '../engine/constants';
 import type { MatchEngine } from '../engine/engine';
 import { getStadium } from '../data/stadiums';
+import { atmosphereFor, type Atmosphere } from './atmosphere';
 import { Camera } from './camera';
 import { advancePhases, drawBall, drawOffsideLine, drawPlayer, kitFor, type KitColors } from './entities';
 import { drawCornerFlags, drawGoals, drawGrass, drawLighting, drawMarkings, pitchTheme } from './pitch';
@@ -21,6 +22,7 @@ export class MatchRenderer {
   private scene: StadiumScene;
   private stadium: Stadium;
   private night: boolean;
+  private atmos: Atmosphere;
   private kits: [KitColors[], KitColors[]] = [[], []];
   private time = 0;
   private dpr = 1;
@@ -31,7 +33,12 @@ export class MatchRenderer {
   ) {
     this.stadium = getStadium(engine.settings.stadiumId);
     this.night = engine.settings.timeOfDay === 'Night';
-    this.scene = new StadiumScene(this.stadium, this.night);
+    this.atmos = atmosphereFor(this.night, engine.settings.weather);
+    this.scene = new StadiumScene(this.stadium, this.night, {
+      atmosphere: this.atmos,
+      homeColor: engine.home.team.primaryColor,
+      awayColor: engine.away.team.secondaryColor,
+    });
     this.buildKits();
   }
 
@@ -79,7 +86,9 @@ export class MatchRenderer {
     ctx.clearRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = true;
 
-    drawSky(ctx, w, h, this.night, e.settings.weather);
+    // Pan the star field against the camera's position along the touchline, so
+    // the sky stays put in the world while the camera tracks the ball.
+    drawSky(ctx, w, h, this.night, e.settings.weather, this.time, this.camera.position.x / PITCH.length);
 
     // Excitement drives crowd animation: momentum toward either goal, plus a
     // spike right after a goal is scored.
@@ -87,6 +96,9 @@ export class MatchRenderer {
     this.scene.draw(ctx, this.camera, this.time, excitement);
 
     const theme = pitchTheme(this.night, e.settings.weather);
+    // The surround follows the stadium's rounded ring, so it has to come from
+    // the bowl rather than being a rectangle the pitch draws for itself.
+    this.scene.drawSurround(ctx, this.camera, theme.surround);
     drawGrass(ctx, this.camera, theme);
     drawMarkings(ctx, this.camera);
 
@@ -97,7 +109,7 @@ export class MatchRenderer {
       }
     }
 
-    drawGoals(ctx, this.camera, this.night);
+    drawGoals(ctx, this.camera, this.night, this.atmos);
     drawCornerFlags(ctx, this.camera, this.time);
 
     // Depth-sorted entity pass so nearer players occlude further ones.
@@ -118,17 +130,18 @@ export class MatchRenderer {
             controlled,
             night: this.night,
             showName: opts.showNames || controlled,
+            atmos: this.atmos,
           }),
       });
     }
     const bp = this.camera.project(e.ball.pos.x, e.ball.pos.y, 0);
     if (bp.visible) {
-      items.push({ d: bp.d - 0.01, draw: () => drawBall(ctx, this.camera, e.ball, this.night) });
+      items.push({ d: bp.d - 0.01, draw: () => drawBall(ctx, this.camera, e.ball, this.night, this.atmos) });
     }
     items.sort((a, b) => b.d - a.d);
     for (const it of items) it.draw();
 
-    drawLighting(ctx, this.camera, this.night, w, h);
+    drawLighting(ctx, this.camera, this.night, w, h, this.scene.rigPositions());
     this.weather.draw(ctx, w, h, this.night);
 
     // Goal flash: a bright bloom that decays over the first moments of the celebration.

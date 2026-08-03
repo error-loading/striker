@@ -4,7 +4,7 @@ import type { CameraMode } from '../data/types';
 import { ACTIONS, ARCADE_BINDINGS, DEFAULT_BINDINGS, keyLabel, type Action } from '../engine/input';
 import { useGame } from '../store/gameStore';
 
-const CAMERAS: CameraMode[] = ['Isometric', 'Broadcast', 'Behind Ball', 'End to End', 'Tactical'];
+const CAMERAS: CameraMode[] = ['Sideline', 'Broadcast', 'Behind Ball', 'End to End', 'Tactical'];
 const GROUPS = ['Movement', 'Attacking', 'Defending', 'System'] as const;
 
 export default function SettingsScreen() {

@@ -107,6 +107,19 @@ export class WeatherSystem {
   }
 }
 
+/**
+ * Stars, fixed to the sky rather than the camera. Positions are seeded once so
+ * the field does not crawl as the camera pans along the touchline.
+ */
+const STAR_RNG = new Rng(0x2718);
+const STARS = Array.from({ length: 90 }, () => ({
+  u: STAR_RNG.range(-0.2, 1.2),
+  v: STAR_RNG.range(0, 1),
+  size: STAR_RNG.range(0.6, 1.7),
+  bright: STAR_RNG.range(0.25, 0.8),
+  twinkle: STAR_RNG.range(0, Math.PI * 2),
+}));
+
 /** Sky backdrop behind the stands. */
 export function drawSky(
   ctx: CanvasRenderingContext2D,
@@ -114,6 +127,8 @@ export function drawSky(
   height: number,
   night: boolean,
   weather: Weather,
+  time = 0,
+  panU = 0,
 ) {
   const g = ctx.createLinearGradient(0, 0, 0, height);
   if (night) {
@@ -139,4 +154,17 @@ export function drawSky(
   }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
+
+  // Stars only in clear night air — cloud and precipitation blot them out.
+  if (night && (weather === 'Clear' || weather === 'Foggy')) {
+    const dim = weather === 'Foggy' ? 0.3 : 1;
+    // Only the upper band of sky is ever above the roofline.
+    const band = height * 0.55;
+    for (const s of STARS) {
+      const x = (((s.u - panU) % 1) + 1) % 1;
+      const twinkle = 0.7 + 0.3 * Math.sin(time * 1.4 + s.twinkle);
+      ctx.fillStyle = `rgba(226,238,255,${s.bright * twinkle * dim})`;
+      ctx.fillRect(x * width, s.v * band, s.size, s.size);
+    }
+  }
 }
